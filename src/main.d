@@ -6,12 +6,9 @@
 module main;
 @safe:
 
+import core.sys.posix.signal : sigaction, sigaction_t, SIGINT, SIGTERM;
 import defines;
-
 import std.stdio : writefln;
-
-import core.sys.posix.unistd : fork;
-import core.sys.posix.signal;
 
 version (server) import server : run;
 version (setup) import setup : run;
