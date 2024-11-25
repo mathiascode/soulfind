@@ -9,25 +9,19 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    container: alpine:edge
     timeout-minutes: 15
     strategy:
       matrix:
         arch: [x86_64]
         compiler: [dmd, ldc]
-        include:
-          - compiler: dmd
-            ccommand: dmd
-          - compiler: ldc
-            ccommand: ldc2
-    env:
-      DC: ${{ matrix.ccommand }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: apk add ${{ matrix.compiler }} dub gcc musl-dev sqlite-dev
+      - name: Set up D
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
 
       - name: Build
         run: dub build
@@ -53,7 +47,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: apk add dub gcc ldc ldc-static musl-dev sqlite-dev sqlite-static
+        run: apk add dub gcc ldc musl-dev sqlite-static
 
       - name: Build
         run: dub build --build=${{ matrix.type }} ${{ matrix.flags }}
