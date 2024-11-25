@@ -6,14 +6,11 @@
 module main;
 @safe:
 
-import defines;
-
-import server;
-
-import std.stdio : writefln;
-
+import core.sys.posix.signal : sigaction, sigaction_t, SIGINT, SIGTERM;
 import core.sys.posix.unistd : fork;
-import core.sys.posix.signal;
+import defines;
+import server;
+import std.stdio : writefln;
 
 extern(C) void handle_termination(int)
 {

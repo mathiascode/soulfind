@@ -6,28 +6,28 @@
 module server;
 @safe:
 
-import defines;
-
 import client;
-import messages, message_codes;
+import core.time : Duration, minutes, MonoTime, seconds;
 import db;
-import room;
+import defines;
+import message_codes;
+import messages;
 import pm;
-
-import std.stdio : writefln;
-import std.socket;
-import std.conv : ConvException, to;
-import std.array : split, join, replace;
-import std.ascii : isPrintable, isPunctuation;
-import std.format : format;
+import room;
 import std.algorithm : canFind;
-import std.digest : digest, LetterCase, toHexString, secureEqual;
+import std.array : join, replace, split;
+import std.ascii : isPrintable, isPunctuation;
+import std.conv : ConvException, to;
+import std.digest : digest, LetterCase, secureEqual, toHexString;
 import std.digest.md : MD5;
-import std.string : strip;
-import std.process : thisProcessID;
 import std.exception : ifThrown;
-
-import core.time : Duration, MonoTime, minutes, seconds;
+import std.format : format;
+import std.process : thisProcessID;
+import std.socket : InternetAddress, Socket, SocketAcceptException,
+					SocketOption, SocketOptionLevel, SocketOSException,
+					SocketSet, SocketShutdown, TcpSocket;
+import std.stdio : writefln;
+import std.string : strip;
 
 class Server
 {
@@ -392,7 +392,7 @@ class Server
 	private void admin_pm(User admin, string message)
 	{
 		PM pm = new PM(message, server_user, admin.username);
-		bool new_message = true;
+		const new_message = true;
 		admin.send_pm(pm, new_message);
 	}
 

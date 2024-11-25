@@ -6,20 +6,19 @@
 module setup;
 @safe:
 
-import defines;
-
 import db;
+import defines;
 
 import std.algorithm : sort;
 import std.conv : ConvException, to;
+import std.exception : ifThrown;
 import std.format : format;
 import std.stdio : readf, readln, write, writefln;
 import std.string : chomp, strip;
-import std.exception : ifThrown;
 
 Sdb sdb;
 
-void main(string[] args)
+private void main(string[] args)
 {
 	string db_file = default_db_file;
 
@@ -41,12 +40,12 @@ void main(string[] args)
 }
 
 @trusted
-string input()
+private string input()
 {
 	return readln();
 }
 
-void main_menu()
+private void main_menu()
 {
 	auto menu = new Menu("Soulfind %s configuration".format(VERSION));
 
@@ -61,12 +60,12 @@ void main_menu()
 	menu.show();
 }
 
-void exit()
+private void exit()
 {
 	writefln("\nA la prochaine...");
 }
 
-void admins()
+private void admins()
 {
 	auto menu = new Menu("Admins (%d)".format(sdb.admins.length));
 
@@ -78,21 +77,21 @@ void admins()
 	menu.show();
 }
 
-void add_admin()
+private void add_admin()
 {
 	write("Admin to add : ");
 	sdb.add_admin(input.strip);
 	admins();
 }
 
-void del_admin()
+private void del_admin()
 {
 	write("Admin to remove : ");
 	sdb.del_admin(input.strip);
 	admins();
 }
 
-void list_admins()
+private void list_admins()
 {
 	const names = sdb.admins;
 
@@ -103,7 +102,7 @@ void list_admins()
 }
 
 
-void listen_port()
+private void listen_port()
 {
 	const port = sdb.get_config_value("port").to!ushort.ifThrown(
 		default_port
@@ -115,14 +114,14 @@ void listen_port()
 	menu.show();
 }
 
-void set_listen_port()
+private void set_listen_port()
 {
 	write("New listen port : ");
 
 	const value = input.strip;
 	const port = value.to!uint.ifThrown(0);
 	if (port <= 0 || port > ushort.max) {
-		writefln("Please enter a port in the range %d-%d", 1, 65535);
+		writefln("Please enter a port in the range %d-%d", 1, 6_5535);
 		set_listen_port();
 		return;
 	}
@@ -131,7 +130,7 @@ void set_listen_port()
 	listen_port();
 }
 
-void max_users()
+private void max_users()
 {
 	const max_users = sdb.get_config_value("max_users").to!uint.ifThrown(
 		default_max_users
@@ -143,7 +142,7 @@ void max_users()
 	menu.show();
 }
 
-void set_max_users()
+private void set_max_users()
 {
 	write("Max users : ");
 
@@ -162,7 +161,7 @@ void set_max_users()
 	max_users();
 }
 
-void motd()
+private void motd()
 {
 	auto menu = new Menu(
 		format("Current message of the day :\n--\n%s\n--",
@@ -174,7 +173,7 @@ void motd()
 	menu.show();
 }
 
-void set_motd()
+private void set_motd()
 {
 	writefln(
 		"\nYou can use the following variables :"
@@ -200,7 +199,7 @@ void set_motd()
 	motd();
 }
 
-void info()
+private void info()
 {
 	auto menu = new Menu(
 		"Soulsetup for Soulfind %s (compiled on %s)".format(VERSION, __DATE__)
@@ -215,7 +214,7 @@ void info()
 	menu.show();
 }
 
-void banned_users()
+private void banned_users()
 {
 	auto menu = new Menu("Banned users (%d)".format(sdb.num_users("banned")));
 
@@ -227,21 +226,21 @@ void banned_users()
 	menu.show();
 }
 
-void ban_user()
+private void ban_user()
 {
 	write("User to ban : ");
 	sdb.user_update_field(input.strip, "banned", 1);
 	banned_users();
 }
 
-void unban_user()
+private void unban_user()
 {
 	write("User to unban : ");
 	sdb.user_update_field(input.strip, "banned", 0);
 	banned_users();
 }
 
-void list_banned()
+private void list_banned()
 {
 	const users = sdb.usernames("banned");
 
@@ -251,7 +250,7 @@ void list_banned()
 	banned_users();
 }
 
-class Menu
+private class Menu
 {
 	string title;
 	string info;

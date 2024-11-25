@@ -6,9 +6,8 @@
 module room;
 @safe:
 
-import defines;
-
 import client;
+import defines;
 import messages;
 
 class Room

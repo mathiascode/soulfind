@@ -8,13 +8,13 @@ module db;
 
 import defines;
 
-import std.string : format, replace, toStringz;
-import std.stdio : writefln;
-import std.file : exists, isFile;
+import etc.c.sqlite3;
+
 import std.conv : to;
 import std.exception : ifThrown;
-
-import etc.c.sqlite3;
+import std.file : exists, isFile;
+import std.stdio : writefln;
+import std.string : format, replace, toStringz;
 
 class Sdb
 {
@@ -25,9 +25,14 @@ class Sdb
 	const admins_table = "admins";
 	const config_table   = "config";
 
-	const users_table_format  = "CREATE TABLE IF NOT EXISTS %s(username TEXT PRIMARY KEY, password TEXT, speed INTEGER, ulnum INTEGER, files INTEGER, folders INTEGER, banned INTEGER, privileges INTEGER) WITHOUT ROWID;";
-	const admins_table_format = "CREATE TABLE IF NOT EXISTS %s(username TEXT PRIMARY KEY, level INTEGER) WITHOUT ROWID;";
-	const config_table_format   = "CREATE TABLE IF NOT EXISTS %s(option TEXT PRIMARY KEY, value) WITHOUT ROWID;";
+	const users_table_format  = "CREATE TABLE IF NOT EXISTS 
+		%s(username TEXT PRIMARY KEY, password TEXT, speed INTEGER,
+		ulnum INTEGER, files INTEGER, folders INTEGER, banned INTEGER,
+		privileges INTEGER) WITHOUT ROWID;";
+	const admins_table_format = "CREATE TABLE IF NOT EXISTS 
+		%s(username TEXT PRIMARY KEY, level INTEGER) WITHOUT ROWID;";
+	const config_table_format = "CREATE TABLE IF NOT EXISTS 
+		%s(option TEXT PRIMARY KEY, value) WITHOUT ROWID;";
 
 	this(string file, bool update = false)
 	{
@@ -43,12 +48,12 @@ class Sdb
 	}
 
 	@trusted
-	void open_db(string file)
+	private void open_db(string file)
 	{
 		sqlite3_open(file.toStringz(), &db);
 	}
 
-	void init_config()
+	private void init_config()
 	{
 		query(config_table_format.format(config_table));
 
@@ -57,15 +62,16 @@ class Sdb
 		init_config_option("motd", "Soulfind %sversion%");
 	}
 
-	void init_config_option(string option, string value)
+	private void init_config_option(string option, string value)
 	{
 		query(
-			"INSERT OR IGNORE INTO %s(option, value) VALUES('%s', '%s');".format(
+			"INSERT OR IGNORE INTO %s(option, value) 
+			 VALUES('%s', '%s');".format(
 			config_table, option, escape(value)
 		));
 	}
 
-	void init_config_option(string option, uint value)
+	private void init_config_option(string option, uint value)
 	{
 		query(
 			"INSERT OR IGNORE INTO %s(option, value) VALUES('%s', %d);".format(
@@ -116,7 +122,8 @@ class Sdb
 	string[] admins()
 	{
 		string[] ret;
-		foreach (record ; query("SELECT username FROM %s;".format(admins_table)))
+		foreach (record ; query("SELECT username FROM %s;".format(
+				 admins_table)))
 			ret ~= record[0];
 		return ret;
 	}
@@ -193,9 +200,11 @@ class Sdb
 	bool get_user(string username, out uint speed, out uint upload_number,
 			out uint shared_files, out uint shared_folders)
 	{
-		debug(db) writefln("DB: Requested %s's info...", blue ~ username ~ norm);
+		debug(db) writefln(
+			"DB: Requested %s's info...", blue ~ username ~ norm);
 		const res = query(
-			"SELECT speed,ulnum,files,folders FROM %s WHERE username = '%s';".format(
+			"SELECT speed,ulnum,files,folders FROM %s 
+			 WHERE username = '%s';".format(
 			users_table, escape(username)
 		));
 
@@ -234,7 +243,7 @@ class Sdb
 	}
 
 	@trusted
-	string[][] query(string query)
+	private string[][] query(string query)
 	{
 		string[][] ret;
 		char* tail;
@@ -242,7 +251,8 @@ class Sdb
 		uint fin;
 
 		debug(db) writefln("DB: Query [%s]", query);
-		sqlite3_prepare_v2(db, query.toStringz(), cast(uint)query.length, &stmt, &tail);
+		sqlite3_prepare_v2(
+			db, query.toStringz(), cast(uint)query.length, &stmt, &tail);
 
 		res = sqlite3_step(stmt);
 
@@ -250,7 +260,8 @@ class Sdb
 			string[] record;
 			const n = sqlite3_column_count(stmt);
 
-			for (uint i ; i < n ; i++) record ~= sqlite3_column_text(stmt, i).to!string;
+			for (uint i ; i < n ; i++)
+				record ~= sqlite3_column_text(stmt, i).to!string;
 
 			ret ~= record;
 			res = sqlite3_step(stmt);
@@ -260,15 +271,17 @@ class Sdb
 
 		if (res != SQLITE_DONE || fin != SQLITE_OK) {
 			// https://sqlite.org/rescode.html#extrc
-			debug(db) writefln("DB: Result Code %d (%s)", res, sqlite3_errstr(res).to!string);
-			debug(db) writefln("    >Final Code %d (%s)", fin, sqlite3_errstr(fin).to!string);
+			debug(db) writefln(
+				"DB: Result Code %d (%s)", res, sqlite3_errstr(res).to!string);
+			debug(db) writefln(
+				"    >Final Code %d (%s)", fin, sqlite3_errstr(fin).to!string);
 			throw new Exception(sqlite3_errstr(fin).to!string);
 			return null;
 		}
 		return ret;
 	}
 
-	string escape(string str)
+	private string escape(string str)
 	{
 		return replace(str, "'", "''");
 	}
