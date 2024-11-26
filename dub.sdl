@@ -15,7 +15,8 @@ subPackage {
 	targetType "executable"
 	targetPath "bin"
 	targetName "soulfind"
-	libs "sqlite3"
+	libs-posix "sqlite3"
+	libs-windows "winsqlite3"
 }
 subPackage {
 	name "setup"
@@ -23,5 +24,6 @@ subPackage {
 	targetType "executable"
 	targetPath "bin"
 	targetName "soulsetup"
-	libs "sqlite3"
+	libs-posix "sqlite3"
+	libs-windows "winsqlite3"
 }

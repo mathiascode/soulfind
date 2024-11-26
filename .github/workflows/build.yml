@@ -32,24 +32,40 @@ jobs:
         run: dub lint
 
   artifacts:
-    runs-on: ubuntu-latest
-    container: alpine:edge
     timeout-minutes: 15
     strategy:
       matrix:
+        image: [ubuntu-latest, macos-latest, windows-latest]
         arch: [x86_64]
         type: [release, debug]
         include:
+          - image: ubuntu-latest
+            container: alpine:edge
+            os: linux
+            dflags: -static
+          - image: macos-latest
+            os: macos
+          - image: windows-latest
+            os: windows
           - type: debug
             flags: --debug=db --debug=msg --debug=user
+    runs-on: ${{ matrix.image }}
+    container: ${{ matrix.container }}
     env:
-      DFLAGS: -static
+      DFLAGS: ${{ matrix.dflags }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'linux'
         run: apk add dub gcc ldc musl-dev sqlite-static
+
+      - name: Install dependencies (macOS/Windows)
+        if: matrix.os != 'linux'
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc
 
       - name: Build
         run: dub build --build=${{ matrix.type }} ${{ matrix.flags }}
@@ -57,5 +73,5 @@ jobs:
       - name: Archive artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: soulfind-${{ matrix.arch }}-linux-${{ matrix.type }}
+          name: soulfind-${{ matrix.arch }}-${{ matrix.os }}-${{ matrix.type }}
           path: bin
