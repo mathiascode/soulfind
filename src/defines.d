@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 
-module defines;
+module soulfind.defines;
 @safe:
 
 const VERSION			= "0.5.0-dev";
