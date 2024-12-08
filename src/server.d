@@ -7,7 +7,6 @@ module server;
 @safe:
 
 import client;
-import core.sys.posix.unistd : fork;
 import core.time : Duration, minutes, MonoTime, seconds;
 import db;
 import defines;
@@ -53,8 +52,13 @@ int run(string[] args)
 		}
 	}
 
-	if (daemon && fork())
-		return 0;
+	version (Windows) {}
+	else {
+		import core.sys.posix.unistd : fork;
+
+		if (daemon && fork())
+			return 0;
+	}
 
 	auto server = new Server(db);
 	return server.listen();

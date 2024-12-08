@@ -5,12 +5,12 @@
 	"license": "GPL-3.0-or-later",
 	"toolchainRequirements": {
 		"dmd": ">=2.98.0",
-		"gdc": "no",
+		"gdc": ">=12.0.0",
 		"ldc": ">=1.28.0"
 	},
 	"dependencies": {
 		"soulfind:server": "*",
-		"soulfind:setup": "*"
+		"soulfind:setup": "*",
 	},
 	"targetType": "none",
 	"subPackages": [
@@ -19,14 +19,14 @@
 			"targetType": "executable",
 			"targetPath": "bin",
 			"targetName": "soulfind",
-			"libs": ["sqlite3"]
+			"dependencies": { "sqlite3d": "*" },
 		},
 		{
 			"name": "setup",
 			"targetType": "executable",
 			"targetPath": "bin",
 			"targetName": "soulsetup",
-			"libs": ["sqlite3"]
+			"dependencies": { "sqlite3d": "*" },
 		}
 	]
 }

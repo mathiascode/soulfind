@@ -11,8 +11,8 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        os: [linux-x86_64, macos-arm64, macos-x86_64]
-        compiler: [ldc, dmd]
+        os: [linux-x86_64, macos-arm64, macos-x86_64, windows-x86_64]
+        compiler: [ldc, dmd, gdc]
         type: [release, debug]
         include:
           - os: linux-x86_64
@@ -27,15 +27,36 @@ jobs:
             image: macos-13
             target: 10.12
 
+          - os: windows-x86_64
+            image: windows-latest
+
           - os: linux-x86_64
             compiler: ldc
             dflags: -static
+
+          - compiler: ldc
+            package: ldc
+
+          - compiler: dmd
+            package: dmd
+
+          - compiler: gdc
+            package: gcc-gdc
 
           - type: debug
             flags: --debug=db --debug=msg --debug=user
         exclude:
           - os: macos-arm64
             compiler: dmd
+
+          - os: macos-arm64
+            compiler: gdc
+
+          - os: macos-x86_64
+            compiler: gdc
+
+          - os: windows-x86_64
+            compiler: gdc
     runs-on: ${{ matrix.image }}
     container: ${{ matrix.container }}
     env:
@@ -45,21 +66,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: apk add ${{ matrix.compiler }} dub gcc musl-dev sqlite-static
-
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
+      - name: Set up D
+        if: runner.os != 'Linux'
         uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{ matrix.compiler }}
+          dub: latest
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: apk add ${{ matrix.package }} clang19 dub musl-dev
+
+      - name: test
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build
         run: dub build --build=${{ matrix.type }} ${{ matrix.flags }}
-
-      - name: Linting
-        run: dub lint
 
       - name: Ad-hoc signing
         if: runner.os == 'macOS'

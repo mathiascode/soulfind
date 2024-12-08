@@ -7,12 +7,26 @@ module db;
 @safe:
 
 import defines;
-import etc.c.sqlite3;
 import std.conv : to;
 import std.exception : ifThrown;
 import std.file : exists, isFile;
 import std.stdio : writefln;
 import std.string : format, replace, toStringz;
+
+version (Have_sqlite3d) {
+	import sqlite3 : sqlite3,
+			sqlite3_column_count, sqlite3_column_text, sqlite3_errstr,
+			sqlite3_finalize, sqlite3_open, sqlite3_prepare_v2,
+			sqlite3_step, sqlite3_stmt,
+			SQLITE_DONE, SQLITE_OK, SQLITE_ROW;
+}
+else {
+	import etc.c.sqlite3 : sqlite3,
+			sqlite3_column_count, sqlite3_column_text, sqlite3_errstr,
+			sqlite3_finalize, sqlite3_open, sqlite3_prepare_v2,
+			sqlite3_step, sqlite3_stmt,
+			SQLITE_DONE, SQLITE_OK, SQLITE_ROW;
+}
 
 class Sdb
 {
