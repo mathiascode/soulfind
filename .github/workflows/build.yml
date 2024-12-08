@@ -7,33 +7,6 @@ on: [push, pull_request]
 
 jobs:
 
-  build:
-    timeout-minutes: 15
-    strategy:
-      matrix:
-        image: [ubuntu-latest, macos-latest]
-        compiler: [dmd, ldc]
-        include:
-          - image: ubuntu-latest
-            container: alpine:edge
-
-    runs-on: ${{ matrix.image }}
-    container: ${{ matrix.container }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        uses: dlang-community/setup-dlang@v2
-        with:
-          compiler: ${{ matrix.compiler }}
-
-      - name: Build
-        run: dub build
-
-      - name: Linting
-        run: dub lint
-
   reuse-compliance:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -44,56 +17,72 @@ jobs:
       - name: REUSE compliance
         uses: fsfe/reuse-action@v5
 
-  artifacts:
+  build:
     timeout-minutes: 15
     strategy:
       matrix:
-        image: [ubuntu-latest, macos-13, macos-latest]
+        image: [ubuntu-latest, macos-latest]
+        arch: [x86_64, arm64]
+        compiler: [dmd, ldc]
         type: [release, debug]
         include:
           - image: ubuntu-latest
             container: alpine:edge
-            os: linux
-            arch: x86_64
-            dflags: -static
 
-          - image: macos-13
-            os: macos
+          - image: ubuntu-latest
             arch: x86_64
-            target: 10.12
+            target: x86_64-linux-musl
 
           - image: macos-latest
-            os: macos
+            arch: x86_64
+            target: x86_64-apple-macos10.12
+
+          - image: macos-latest
             arch: arm64
-            target: 11
+            target: arm64-apple-macos11.0
+
+          - compiler: dmd
+            target: x86_64
+
+          - compiler: ldc
+            image: ubuntu-latest
+            dflags: -static
 
           - type: debug
             flags: --debug=db --debug=msg --debug=user
+        exclude:
+          - image: ubuntu-latest
+            arch: arm64
 
+          - compiler: dmd
+            arch: arm64
     runs-on: ${{ matrix.image }}
     container: ${{ matrix.container }}
     env:
       DFLAGS: ${{ matrix.dflags }}
-      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install dependencies (Linux)
-        if: matrix.os == 'linux'
-        run: apk add dub gcc ldc musl-dev sqlite-static
+        if: runner.os == 'Linux'
+        run: apk add ${{ matrix.compiler }} dub gcc musl-dev sqlite-static
 
       - name: Install dependencies (macOS)
-        if: matrix.os != 'linux'
+        if: runner.os == 'macOS'
         uses: dlang-community/setup-dlang@v2
         with:
-          compiler: ldc
+          compiler: ${{ matrix.compiler }}
 
       - name: Build
-        run: dub build --build=${{ matrix.type }} ${{ matrix.flags }}
+        run: dub build --build=${{ matrix.type }} --arch=${{ matrix.target }} ${{ matrix.flags }}
+
+      - name: Linting
+        run: dub lint
 
       - name: Archive artifacts
+        if: matrix.compiler == 'ldc'
         uses: actions/upload-artifact@v4
         with:
-          name: soulfind-${{ matrix.arch }}-${{ matrix.os }}-${{ matrix.type }}
+          name: soulfind-${{ matrix.arch }}-${{ runner.os }}-${{ matrix.type }}
           path: bin
