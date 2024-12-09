@@ -11,6 +11,7 @@ import std.bitmanip : Endian, read;
 import std.conv : to;
 import std.outbuffer : OutBuffer;
 import std.stdio : writefln;
+import std.string : lastIndexOf;
 
 // Constants
 
@@ -22,7 +23,7 @@ const enum Status
 }
 
 
-// Server Messages
+// Message Codes
 
 const Login                  = 1;
 const SetWaitPort            = 2;
@@ -76,81 +77,607 @@ const GlobalRoomMessage      = 152;
 const CantConnectToPeer      = 1001;
 
 
-// Server Message Names
+// Incoming Messages
 
-const string[] message_name = [
-    1    : "Login",
-    2    : "SetWaitPort",
-    3    : "GetPeerAddress",
-    5    : "WatchUser",
-    6    : "UnwatchUser",
-    7    : "GetUserStatus",
-    13   : "SayChatroom",
-    14   : "JoinRoom",
-    15   : "LeaveRoom",
-    16   : "UserJoinedRoom",
-    17   : "UserLeftRoom",
-    18   : "ConnectToPeer",
-    22   : "MessageUser",
-    23   : "MessageAcked",
-    26   : "FileSearch",
-    28   : "SetStatus",
-    32   : "ServerPing",
-    35   : "SharedFoldersFiles",
-    36   : "GetUserStats",
-    41   : "Relogged",
-    51   : "AddThingILike",
-    52   : "RemoveThingILike",
-    54   : "GetRecommendations",
-    56   : "GlobalRecommendations",
-    57   : "UserInterests",
-    64   : "RoomList",
-    66   : "AdminMessage",
-    69   : "PrivilegedUsers",
-    92   : "CheckPrivileges",
-    103  : "WishlistSearch",
-    104  : "WishlistInterval",
-    110  : "SimilarUsers",
-    111  : "ItemRecommendations",
-    112  : "ItemSimilarUsers",
-    113  : "RoomTicker",
-    114  : "RoomTickerAdd",
-    115  : "RoomTickerRemove",
-    116  : "SetRoomTicker",
-    117  : "AddThingIHate",
-    118  : "RemoveThingIHate",
-    120  : "RoomSearch",
-    121  : "SendUploadSpeed",
-    122  : "UserPrivileged",
-    123  : "GivePrivileges",
-    142  : "ChangePassword",
-    149  : "MessageUsers",
-    150  : "JoinGlobalRoom",
-    151  : "LeaveGlobalRoom",
-    152  : "GlobalRoomMessage",
-    1001 : "CantConnectToPeer",
-];
-
-
-// Base Message
-
-class Message
+class UMessage
 {
-    // Attributes
-
     uint       code;
-    OutBuffer  out_buf;
-    uint       length;
     ubyte[]    in_buf;
 
+    this(uint code, ubyte[] in_buf, string in_user = "?")
+    {
+        this.in_buf = in_buf;
 
-    // Outgoing Message
+        debug (msg) writefln(
+            "Receive <- %s (code %d) of %d bytes <- from user %s",
+            blue ~ this.name ~ norm, code, in_buf.length,
+            blue ~ in_user ~ norm
+        );
+    }
+
+    string name()
+    {
+        const cls_name = typeid(this).name;
+        return cls_name[cls_name.lastIndexOf(".") + 1 .. $];
+    }
+
+    private uint readi()
+    {
+        uint i;
+        if (in_buf.length < uint.sizeof) {
+            writefln(
+                "message code %d, length %d not enough data "
+                ~ "trying to read an int", code, in_buf.length
+            );
+            return i;
+        }
+
+        i = in_buf.read!(uint, Endian.littleEndian);
+        return i;
+    }
+
+    private uint readsi()
+    {
+        int i;
+        if (in_buf.length < int.sizeof) {
+            writefln(
+                "message code %d, length %d not enough data "
+                ~ "trying to read a signed int", code, in_buf.length
+            );
+            return i;
+        }
+
+        i = in_buf.read!(int, Endian.littleEndian);
+        return i;
+    }
+
+    private bool readb()
+    {
+        bool i;
+        if (in_buf.length < bool.sizeof) {
+            writefln(
+                "message code %d, length %d not enough data "
+                ~ "trying to read a boolean", code, in_buf.length
+            );
+            return i;
+        }
+
+        i = in_buf.read!(bool, Endian.littleEndian);
+        return i;
+    }
+
+    private string reads()
+    {
+        uint slen = readi();
+        if (slen > in_buf.length) slen = cast(uint) in_buf.length;
+        const str = cast(string) in_buf[0 .. slen].idup;
+
+        in_buf = in_buf[slen .. $];
+        return str;
+    }
+}
+
+class ULogin : UMessage
+{
+    string  user;
+    string  password;
+    uint    major_version;
+    string  hash;            // MD5 hash of username + password
+    uint    minor_version;
+
+    this(ubyte[] in_buf)
+    {
+        super(Login, in_buf);
+
+        user          = reads();
+        password      = reads();
+        major_version = readi();
+
+        if (major_version >= 155) {
+            // Older clients would not send these
+            hash          = reads();
+            minor_version = readi();
+        }
+    }
+}
+
+class USetWaitPort : UMessage
+{
+    uint port;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(SetWaitPort, in_buf, in_user);
+
+        port = readi();
+    }
+}
+
+class UGetPeerAddress : UMessage
+{
+    string user;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(GetPeerAddress, in_buf, in_user);
+
+        user = reads();
+    }
+}
+
+class UWatchUser : UMessage
+{
+    string user;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(WatchUser, in_buf, in_user);
+
+        user = reads();
+    }
+}
+
+class UUnwatchUser : UMessage
+{
+    string user;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(UnwatchUser, in_buf, in_user);
+
+        user = reads();
+    }
+}
+
+class UGetUserStatus : UMessage
+{
+    string user;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(GetUserStatus, in_buf, in_user);
+
+        user = reads();
+    }
+}
+
+class USayChatroom : UMessage
+{
+    string  room;
+    string  message;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(SayChatroom, in_buf, in_user);
+
+        room    = reads();
+        message = reads();
+    }
+}
+
+class UJoinRoom : UMessage
+{
+    string room;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(JoinRoom, in_buf, in_user);
+
+        room = reads();
+    }
+}
+
+class ULeaveRoom : UMessage
+{
+    string room;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(LeaveRoom, in_buf, in_user);
+
+        room = reads();
+    }
+}
+
+class UConnectToPeer : UMessage
+{
+    uint    token;
+    string  user;
+    string  type;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(ConnectToPeer, in_buf, in_user);
+
+        token = readi();
+        user  = reads();
+        type  = reads();
+    }
+}
+
+class UMessageUser : UMessage
+{
+    string  user;
+    string  message;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(MessageUser, in_buf, in_user);
+
+        user    = reads();
+        message = reads();
+    }
+}
+
+class UMessageAcked : UMessage
+{
+    uint id;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(MessageAcked, in_buf, in_user);
+
+        id = readi();
+    }
+}
+
+class UFileSearch : UMessage
+{
+    uint    token;
+    string  query;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(FileSearch, in_buf, in_user);
+
+        token = readi();
+        query = reads();
+    }
+}
+
+class UWishlistSearch : UMessage
+{
+    uint    token;
+    string  query;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(WishlistSearch, in_buf, in_user);
+
+        token = readi();
+        query = reads();
+    }
+}
+
+class USimilarUsers : UMessage
+{
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(SimilarUsers, in_buf, in_user);
+    }
+}
+
+class USetStatus : UMessage
+{
+    uint status;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(SetStatus, in_buf, in_user);
+
+        status = readi();
+    }
+}
+
+class UServerPing : UMessage
+{
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(ServerPing, in_buf, in_user);
+    }
+}
+
+class USendUploadSpeed : UMessage
+{
+    uint speed;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(SendUploadSpeed, in_buf, in_user);
+
+        speed = readi();
+    }
+}
+
+class USharedFoldersFiles : UMessage
+{
+    uint  nb_folders;
+    uint  nb_files;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(SharedFoldersFiles, in_buf, in_user);
+
+        nb_folders = readi();
+        nb_files   = readi();
+    }
+}
+
+class UGetUserStats : UMessage
+{
+    string user;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(GetUserStats, in_buf, in_user);
+
+        user = reads();
+    }
+}
+
+class UUserSearch : UMessage
+{
+    string  user;
+    uint    token;
+    string  query;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(UserSearch, in_buf, in_user);
+
+        user  = reads();
+        token = readi();
+        query = reads();
+    }
+}
+
+class UAddThingILike : UMessage
+{
+    string thing;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(AddThingILike, in_buf, in_user);
+
+        thing = reads();
+    }
+}
+
+class URemoveThingILike : UMessage
+{
+    string thing;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(RemoveThingILike, in_buf, in_user);
+
+        thing = reads();
+    }
+}
+
+class UGetRecommendations : UMessage
+{
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(GetRecommendations, in_buf, in_user);
+    }
+}
+
+class UGlobalRecommendations : UMessage
+{
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(GlobalRecommendations, in_buf, in_user);
+    }
+}
+
+class UUserInterests : UMessage
+{
+    string user;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(UserInterests, in_buf, in_user);
+
+        user = reads();
+    }
+}
+
+class URoomList : UMessage
+{
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(RoomList, in_buf, in_user);
+    }
+}
+
+class UCheckPrivileges : UMessage
+{
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(CheckPrivileges, in_buf, in_user);
+    }
+}
+
+class UAddThingIHate : UMessage
+{
+    string thing;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(AddThingIHate, in_buf, in_user);
+
+        thing = reads();
+    }
+}
+
+class URemoveThingIHate : UMessage
+{
+    string thing;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(RemoveThingIHate, in_buf, in_user);
+
+        thing = reads();
+    }
+}
+
+class UItemRecommendations : UMessage
+{
+    string item;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(ItemRecommendations, in_buf, in_user);
+
+        item = reads();
+    }
+}
+
+class UItemSimilarUsers : UMessage
+{
+    string item;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(ItemSimilarUsers, in_buf, in_user);
+
+        item = reads();
+    }
+}
+
+class USetRoomTicker : UMessage
+{
+    string  room;
+    string  tick;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(SetRoomTicker, in_buf, in_user);
+
+        room = reads();
+        tick = reads();
+    }
+}
+
+class URoomSearch : UMessage
+{
+    string  room;
+    uint    token;
+    string  query;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(RoomSearch, in_buf, in_user);
+
+        room  = reads();
+        token = readi();
+        query = reads();
+    }
+}
+
+class UUserPrivileged : UMessage
+{
+    string user;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(UserPrivileged, in_buf, in_user);
+
+        user = reads();
+    }
+}
+
+class UGivePrivileges : UMessage
+{
+    string  user;
+    uint    time;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(GivePrivileges, in_buf, in_user);
+
+        user = reads();
+        time = readi();
+    }
+}
+
+class UChangePassword : UMessage
+{
+    string password;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(ChangePassword, in_buf, in_user);
+
+        password = reads();
+    }
+}
+
+class UMessageUsers : UMessage
+{
+    string[]  users;
+    string    message;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(MessageUsers, in_buf, in_user);
+
+        foreach (i ; 0 .. readi()) users ~= reads();
+        message = reads();
+    }
+}
+
+class UJoinGlobalRoom : UMessage
+{
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(JoinGlobalRoom, in_buf, in_user);
+    }
+}
+
+class ULeaveGlobalRoom : UMessage
+{
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(LeaveGlobalRoom, in_buf, in_user);
+    }
+}
+
+class UCantConnectToPeer : UMessage
+{
+    uint token;
+    string user;
+
+    this(ubyte[] in_buf, string in_user)
+    {
+        super(CantConnectToPeer, in_buf, in_user);
+
+        token = readi();
+        user  = reads();
+    }
+}
+
+
+// Outgoing Messages
+
+class SMessage
+{
+    uint       code;
+    OutBuffer  out_buf;
 
     this(uint code)
     {
         out_buf = new OutBuffer();
         this.code = code;
         writei(code);
+    }
+
+    string name()
+    {
+        const cls_name = typeid(this).name;
+        return cls_name[cls_name.lastIndexOf(".") + 1 .. $];
     }
 
     ubyte[] bytes()
@@ -183,516 +710,9 @@ class Message
         writei(s.length);
         out_buf.write(s);
     }
-
-
-    // Incoming Message
-
-    this(ubyte[] in_buf)
-    {
-        this.in_buf = in_buf;
-    }
-
-    private uint readi()
-    {
-        uint i;
-        if (in_buf.length < uint.sizeof) {
-            writefln(
-                "message code %d, length %d not enough data "
-                ~ "trying to read an int", code, length
-            );
-            return i;
-        }
-
-        i = in_buf.read!(uint, Endian.littleEndian);
-        return i;
-    }
-
-    private uint readsi()
-    {
-        int i;
-        if (in_buf.length < int.sizeof) {
-            writefln(
-                "message code %d, length %d not enough data "
-                ~ "trying to read a signed int", code, length
-            );
-            return i;
-        }
-
-        i = in_buf.read!(int, Endian.littleEndian);
-        return i;
-    }
-
-    private bool readb()
-    {
-        bool i;
-        if (in_buf.length < bool.sizeof) {
-            writefln(
-                "message code %d, length %d not enough data "
-                ~ "trying to read a boolean", code, length
-            );
-            return i;
-        }
-
-        i = in_buf.read!(bool, Endian.littleEndian);
-        return i;
-    }
-
-    private string reads()
-    {
-        uint slen = readi();
-        if (slen > in_buf.length) slen = cast(uint) in_buf.length;
-        const str = cast(string) in_buf[0 .. slen].idup;
-
-        in_buf = in_buf[slen .. $];
-        return str;
-    }
 }
 
-
-// Incoming Messages
-
-class ULogin : Message
-{
-    string  username;
-    string  password;
-    uint    major_version;
-    string  hash;            // MD5 hash of username + password
-    uint    minor_version;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        username      = reads();
-        password      = reads();
-        major_version = readi();
-
-        if (major_version >= 155) {
-            // Older clients would not send these
-            hash          = reads();
-            minor_version = readi();
-        }
-    }
-}
-
-class USetWaitPort : Message
-{
-    uint port;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        port = readi();
-    }
-}
-
-class UGetPeerAddress : Message
-{
-    string user;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user = reads();
-    }
-}
-
-class UWatchUser : Message
-{
-    string user;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user = reads();
-    }
-}
-
-class UUnwatchUser : Message
-{
-    string user;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user = reads();
-    }
-}
-
-class UGetUserStatus : Message
-{
-    string user;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user = reads();
-    }
-}
-
-class USayChatroom : Message
-{
-    string  room;
-    string  message;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        room    = reads();
-        message = reads();
-    }
-}
-
-class UJoinRoom : Message
-{
-    string room;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        room = reads();
-    }
-}
-
-class ULeaveRoom : Message
-{
-    string room;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        room = reads();
-    }
-}
-
-class UConnectToPeer : Message
-{
-    uint    token;
-    string  user;
-    string  type;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        token = readi();
-        user  = reads();
-        type  = reads();
-    }
-}
-
-class UMessageUser : Message
-{
-    string  user;
-    string  message;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user    = reads();
-        message = reads();
-    }
-}
-
-class UMessageAcked : Message
-{
-    uint id;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        id = readi();
-    }
-}
-
-class UFileSearch : Message
-{
-    uint    token;
-    string  query;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        token = readi();
-        query = reads();
-    }
-}
-
-class UWishlistSearch : Message
-{
-    uint    token;
-    string  query;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        token = readi();
-        query = reads();
-    }
-}
-
-class USetStatus : Message
-{
-    uint status;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        status = readi();
-    }
-}
-
-class USendUploadSpeed : Message
-{
-    uint speed;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        speed = readi();
-    }
-}
-
-class USharedFoldersFiles : Message
-{
-    uint  nb_folders;
-    uint  nb_files;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        nb_folders = readi();
-        nb_files   = readi();
-    }
-}
-
-class UGetUserStats : Message
-{
-    string user;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user = reads();
-    }
-}
-
-class UUserSearch : Message
-{
-    string  user;
-    uint    token;
-    string  query;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user  = reads();
-        token = readi();
-        query = reads();
-    }
-}
-
-class UAddThingILike : Message
-{
-    string thing;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        thing = reads();
-    }
-}
-
-class URemoveThingILike : Message
-{
-    string thing;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        thing = reads();
-    }
-}
-
-class UUserInterests : Message
-{
-    string user;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user = reads();
-    }
-}
-
-class UAddThingIHate : Message
-{
-    string thing;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        thing = reads();
-    }
-}
-
-class URemoveThingIHate : Message
-{
-    string thing;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        thing = reads();
-    }
-}
-
-class UGetItemRecommendations : Message
-{
-    string item;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        item = reads();
-    }
-}
-
-class UItemSimilarUsers : Message
-{
-    string item;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        item = reads();
-    }
-}
-
-class USetRoomTicker : Message
-{
-    string  room;
-    string  tick;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        room = reads();
-        tick = reads();
-    }
-}
-
-class URoomSearch : Message
-{
-    string  room;
-    uint    token;
-    string  query;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        room  = reads();
-        token = readi();
-        query = reads();
-    }
-}
-
-class UUserPrivileged : Message
-{
-    string user;
-
-    this(ubyte[] buf)
-    {
-        super(buf);
-
-        user = reads();
-    }
-}
-
-class UGivePrivileges : Message
-{
-    string  user;
-    uint    time;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        user = reads();
-        time = readi();
-    }
-}
-
-class UChangePassword : Message
-{
-    string password;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        password = reads();
-    }
-}
-
-class UMessageUsers : Message
-{
-    string[]  users;
-    string    message;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        foreach (i ; 0 .. readi()) users ~= reads();
-        message = reads();
-    }
-}
-
-class UCantConnectToPeer : Message
-{
-    uint token;
-    string user;
-
-    this(ubyte[] in_buf)
-    {
-        super(in_buf);
-
-        token = readi();
-        user  = reads();
-    }
-}
-
-
-// Outgoing Messages
-
-class SLogin : Message
+class SLogin : SMessage
 {
     this(bool success, string mesg, uint addr = 0,
          string password = null, bool supporter = false)
@@ -711,7 +731,7 @@ class SLogin : Message
     }
 }
 
-class SGetPeerAddress : Message
+class SGetPeerAddress : SMessage
 {
     this(string username, uint address, uint port, uint unknown = 0,
             uint obfuscated_port = 0)
@@ -726,7 +746,7 @@ class SGetPeerAddress : Message
     }
 }
 
-class SWatchUser : Message
+class SWatchUser : SMessage
 {
     this(string user, bool exists, uint status, uint speed,
          uint upload_number, uint something, uint shared_files,
@@ -749,7 +769,7 @@ class SWatchUser : Message
     }
 }
 
-class SGetUserStatus : Message
+class SGetUserStatus : SMessage
 {
     this(string username, uint status, bool privileged)
     {
@@ -761,7 +781,7 @@ class SGetUserStatus : Message
     }
 }
 
-class SSayChatroom : Message
+class SSayChatroom : SMessage
 {
     this(string room, string user, string mesg)
     {
@@ -773,7 +793,7 @@ class SSayChatroom : Message
     }
 }
 
-class SRoomList : Message
+class SRoomList : SMessage
 {
     this(ulong[string] rooms)
     {
@@ -793,7 +813,7 @@ class SRoomList : Message
     }
 }
 
-class SJoinRoom : Message
+class SJoinRoom : SMessage
 {
     this(string room, string[] usernames, uint[string] statuses,
          uint[string] speeds, uint[string] upload_numbers,
@@ -830,7 +850,7 @@ class SJoinRoom : Message
     }
 }
 
-class SLeaveRoom : Message
+class SLeaveRoom : SMessage
 {
     this(string room)
     {
@@ -840,7 +860,7 @@ class SLeaveRoom : Message
     }
 }
 
-class SUserJoinedRoom : Message
+class SUserJoinedRoom : SMessage
 {
     this(string room, string username, uint status,
          uint speed, uint upload_number, uint something,
@@ -862,7 +882,7 @@ class SUserJoinedRoom : Message
     }
 }
 
-class SUserLeftRoom : Message
+class SUserLeftRoom : SMessage
 {
     this(string username, string room)
     {
@@ -873,7 +893,7 @@ class SUserLeftRoom : Message
     }
 }
 
-class SConnectToPeer : Message
+class SConnectToPeer : SMessage
 {
     this(string username, string type, uint address, uint port,
             uint token, bool privileged, uint unknown = 0,
@@ -892,7 +912,7 @@ class SConnectToPeer : Message
     }
 }
 
-class SMessageUser : Message
+class SMessageUser : SMessage
 {
     this(uint id, uint timestamp, string from, string content,
             bool new_message)
@@ -907,7 +927,7 @@ class SMessageUser : Message
     }
 }
 
-class SFileSearch : Message
+class SFileSearch : SMessage
 {
     this(string username, uint token, string text)
     {
@@ -919,7 +939,7 @@ class SFileSearch : Message
     }
 }
 
-class SGetUserStats : Message
+class SGetUserStats : SMessage
 {
     this(string username, uint speed, uint upload_number, uint something,
             uint shared_files, uint shared_folders)
@@ -935,7 +955,7 @@ class SGetUserStats : Message
     }
 }
 
-class SGetRecommendations : Message
+class SGetRecommendations : SMessage
 {
     this(uint[string] list)
     {
@@ -950,7 +970,7 @@ class SGetRecommendations : Message
     }
 }
 
-class SGetGlobalRecommendations : Message
+class SGetGlobalRecommendations : SMessage
 {
     this(uint[string] list)
     {
@@ -965,7 +985,7 @@ class SGetGlobalRecommendations : Message
     }
 }
 
-class SUserInterests : Message
+class SUserInterests : SMessage
 {
     this(string user, string[string] likes, string[string] hates)
     {
@@ -981,7 +1001,7 @@ class SUserInterests : Message
     }
 }
 
-class SRelogged : Message
+class SRelogged : SMessage
 {
     this()
     {
@@ -989,7 +1009,7 @@ class SRelogged : Message
     }
 }
 
-class SUserSearch : Message
+class SUserSearch : SMessage
 {
     this(string user, uint token, string query)
     {
@@ -1001,7 +1021,7 @@ class SUserSearch : Message
     }
 }
 
-class SAdminMessage : Message
+class SAdminMessage : SMessage
 {
     this(string message)
     {
@@ -1011,7 +1031,7 @@ class SAdminMessage : Message
     }
 }
 
-class SCheckPrivileges : Message
+class SCheckPrivileges : SMessage
 {
     this(uint time)
     {
@@ -1021,7 +1041,7 @@ class SCheckPrivileges : Message
     }
 }
 
-class SWishlistInterval : Message
+class SWishlistInterval : SMessage
 {
     this(uint interval)
     {
@@ -1031,7 +1051,7 @@ class SWishlistInterval : Message
     }
 }
 
-class SSimilarUsers : Message
+class SSimilarUsers : SMessage
 {
     this(uint[string] list)
     {
@@ -1046,7 +1066,7 @@ class SSimilarUsers : Message
     }
 }
 
-class SGetItemRecommendations : Message
+class SItemRecommendations : SMessage
 {
     this(string item, uint[string] list)
     {
@@ -1063,7 +1083,7 @@ class SGetItemRecommendations : Message
     }
 }
 
-class SItemSimilarUsers : Message
+class SItemSimilarUsers : SMessage
 {
     this(string item, string[] list)
     {
@@ -1075,7 +1095,7 @@ class SItemSimilarUsers : Message
     }
 }
 
-class SRoomTicker : Message
+class SRoomTicker : SMessage
 {
     this(string room, string[string] tickers)
     {
@@ -1091,7 +1111,7 @@ class SRoomTicker : Message
     }
 }
 
-class SRoomTickerAdd : Message
+class SRoomTickerAdd : SMessage
 {
     this(string room, string user, string ticker)
     {
@@ -1103,7 +1123,7 @@ class SRoomTickerAdd : Message
     }
 }
 
-class SRoomTickerRemove : Message
+class SRoomTickerRemove : SMessage
 {
     this(string room, string user)
     {
@@ -1114,7 +1134,7 @@ class SRoomTickerRemove : Message
     }
 }
 
-class SRoomSearch : Message
+class SRoomSearch : SMessage
 {
     this(string user, uint token, string query)
     {
@@ -1126,7 +1146,7 @@ class SRoomSearch : Message
     }
 }
 
-class SUserPrivileged : Message
+class SUserPrivileged : SMessage
 {
     this(string username, bool privileged)
     {
@@ -1137,7 +1157,7 @@ class SUserPrivileged : Message
     }
 }
 
-class SChangePassword : Message
+class SChangePassword : SMessage
 {
     this(string password)
     {
@@ -1147,7 +1167,7 @@ class SChangePassword : Message
     }
 }
 
-class SGlobalRoomMessage : Message
+class SGlobalRoomMessage : SMessage
 {
     this(string room, string user, string mesg)
     {
@@ -1159,7 +1179,7 @@ class SGlobalRoomMessage : Message
     }
 }
 
-class SCantConnectToPeer : Message
+class SCantConnectToPeer : SMessage
 {
     this(uint token)
     {
