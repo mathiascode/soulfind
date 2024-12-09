@@ -65,9 +65,9 @@ class Room
         return (username in user_list) ? true : false;
     }
 
-    ulong nb_users()
+    uint nb_users()
     {
-        return user_list.length;
+        return cast(uint) user_list.length;
     }
 
     private string[] user_names()

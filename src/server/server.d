@@ -267,9 +267,9 @@ class Server
         return room_list[name];
     }
 
-    ulong[string] room_stats()
+    uint[string] room_stats()
     {
-        ulong[string] stats;
+        uint[string] stats;
         foreach (room ; room_list.values) stats[room.name] = room.nb_users;
         return stats;
     }

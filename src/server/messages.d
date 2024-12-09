@@ -116,21 +116,6 @@ class UMessage
         return i;
     }
 
-    private uint readsi()
-    {
-        int i;
-        if (in_buf.length < int.sizeof) {
-            writefln(
-                "message code %d, length %d not enough data "
-                ~ "trying to read a signed int", code, in_buf.length
-            );
-            return i;
-        }
-
-        i = in_buf.read!(int, Endian.littleEndian);
-        return i;
-    }
-
     private bool readb()
     {
         bool i;
@@ -142,7 +127,7 @@ class UMessage
             return i;
         }
 
-        i = in_buf.read!(bool, Endian.littleEndian);
+        i = in_buf.read!bool;
         return i;
     }
 
@@ -662,16 +647,14 @@ class UCantConnectToPeer : UMessage
 
 // Outgoing Messages
 
-class SMessage
+class SMessage : OutBuffer
 {
     uint       code;
-    OutBuffer  out_buf;
 
     this(uint code)
     {
-        out_buf = new OutBuffer();
         this.code = code;
-        writei(code);
+        write(code);
     }
 
     string name()
@@ -680,35 +663,25 @@ class SMessage
         return cls_name[cls_name.lastIndexOf(".") + 1 .. $];
     }
 
-    ubyte[] bytes()
-    {
-        return out_buf.toBytes();
-    }
-
     private void writei(uint i)
     {
-        out_buf.write(i);
-    }
-
-    private void writei(ulong i)
-    {
-        out_buf.write(cast(uint) i);
+        write(i);
     }
 
     private void writesi(int i)
     {
-        out_buf.write(i);
+        write(i);
     }
 
     private void writeb(bool b)
     {
-        out_buf.write(cast(ubyte) b);
+        write(cast(ubyte) b);
     }
 
     private void writes(string s)
     {
-        writei(s.length);
-        out_buf.write(s);
+        write(cast(uint) s.length);
+        write(s);
     }
 }
 
@@ -795,14 +768,14 @@ class SSayChatroom : SMessage
 
 class SRoomList : SMessage
 {
-    this(ulong[string] rooms)
+    this(uint[string] rooms)
     {
         super(RoomList);
 
-        writei(rooms.length);
+        writei(cast(uint) rooms.length);
         foreach (room, users ; rooms) writes(room);
 
-        writei(rooms.length);
+        writei(cast(uint) rooms.length);
         foreach (room, users ; rooms) writei(users);
 
         writei(0);    // number of owned private rooms(unimplemented)
@@ -824,7 +797,7 @@ class SJoinRoom : SMessage
         super(JoinRoom);
 
         writes(room);
-        const n = usernames.length;
+        const n = cast(uint) usernames.length;
 
         writei(n);
         foreach (username ; usernames) writes(username);
@@ -961,7 +934,7 @@ class SGetRecommendations : SMessage
     {
         super(GetRecommendations);
 
-        writei(list.length);
+        writei(cast(uint) list.length);
         foreach (artist, level ; list)
         {
             writes(artist);
@@ -976,7 +949,7 @@ class SGetGlobalRecommendations : SMessage
     {
         super(GlobalRecommendations);
 
-        writei(list.length);
+        writei(cast(uint) list.length);
         foreach (artist, level ; list)
         {
             writes(artist);
@@ -993,10 +966,10 @@ class SUserInterests : SMessage
 
         writes(user);
 
-        writei(likes.length);
+        writei(cast(uint) likes.length);
         foreach (thing ; likes) writes(thing);
 
-        writei(hates.length);
+        writei(cast(uint) hates.length);
         foreach (thing ; hates) writes(thing);
     }
 }
@@ -1057,7 +1030,7 @@ class SSimilarUsers : SMessage
     {
         super(SimilarUsers);
 
-        writei(list.length);
+        writei(cast(uint) list.length);
         foreach (user, weight ; list)
         {
             writes (user);
@@ -1073,7 +1046,7 @@ class SItemRecommendations : SMessage
         super(ItemRecommendations);
 
         writes(item);
-        writei(list.length);
+        writei(cast(uint) list.length);
 
         foreach (recommendation, weight ; list)
         {
@@ -1090,7 +1063,7 @@ class SItemSimilarUsers : SMessage
         super(ItemSimilarUsers);
 
         writes(item);
-        writei(list.length);
+        writei(cast(uint) list.length);
         foreach (user ; list) writes(user);
     }
 }
@@ -1102,7 +1075,7 @@ class SRoomTicker : SMessage
         super(RoomTicker);
 
         writes(room);
-        writei(tickers.length);
+        writei(cast(uint) tickers.length);
         foreach (string user, string ticker ; tickers)
         {
             writes(user);
