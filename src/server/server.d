@@ -17,6 +17,7 @@ import std.algorithm : canFind;
 import std.array : join, replace, split;
 import std.ascii : isPrintable, isPunctuation;
 import std.conv : ConvException, to;
+import std.datetime : Clock;
 import std.digest : digest, LetterCase, secureEqual, toHexString;
 import std.digest.md : MD5;
 import std.exception : ifThrown;
@@ -30,29 +31,29 @@ import std.string : strip;
 
 class Server
 {
-    // Attributes
+    Sdb                     db;
+    GlobalRoom              global_room;
 
-    Sdb                   db;
+    private MonoTime        started_at;
+    private ushort          port;
+    private uint            max_users;
 
-    private ushort        port;
-    private uint          max_users;
-    private User[string]  user_list;
+    private Socket          sock;
+    private User[Socket]    user_socks;
+    private int             keepalive_time = 60;
+    private int             keepalive_interval = 5;
+    private Duration        select_timeout = 2.minutes;
 
-    private MonoTime      started_at;
+    private PM[uint]        pm_list;
+    private Room[string]    room_list;
+    private User[string]    user_list;
 
-    private Socket        sock;
-    private User[Socket]  user_socks;
-    private int           keepalive_time = 60;
-    private int           keepalive_interval = 5;
-    private Duration      select_timeout = 2.minutes;
-
-
-    // Constructor
 
     this(string db_file)
     {
         started_at = MonoTime.currTime;
         db = new Sdb(db_file);
+        global_room = new GlobalRoom();
 
         port = db.get_config_value("port").to!ushort.ifThrown(
             cast(ushort) default_port
@@ -126,11 +127,10 @@ class Server
                     debug (user) writefln(
                         "Connection accepted from %s", new_sock.remoteAddress
                     );
-                    auto user = new User(
+                    user_socks[new_sock] = new User(
                         this, new_sock,
                         (cast(InternetAddress) new_sock.remoteAddress).addr
-                    );
-                    user_socks[new_sock] = user;
+                    );;
                 }
                 nb--;
                 read_socks.remove(sock);
@@ -194,11 +194,84 @@ class Server
     void do_RoomSearch(uint token, string query, string username,
                         string room_name)
     {
-        auto room = Room.get_room(room_name);
+        auto room = get_room(room_name);
         if (!room)
             return;
 
         room.send_to_all(new SFileSearch(username, token, query));
+    }
+
+
+    // Private Messages
+
+    PM add_pm(string from, string to, string content)
+    {
+        auto pm = PM();
+
+        pm.id = new_pm_id;
+        pm.timestamp = Clock.currTime.toUnixTime;
+        pm.from = from;
+        pm.to = to;
+        pm.content = content;
+
+        pm_list[pm.id] = pm;
+        return pm;
+    }
+
+    void del_pm(uint id)
+    {
+        if (find_pm(id))
+            pm_list.remove(id);
+    }
+
+    PM[] get_pms_for(string user)
+    {
+        PM[] pms;
+        foreach (pm ; pm_list) if (pm.to == user) pms ~= pm;
+        return pms;
+    }
+
+    private bool find_pm(uint id)
+    {
+        return(id in pm_list) ? true : false;
+    }
+
+    private uint new_pm_id()
+    {
+        uint id = cast(uint) pm_list.length;
+        while (find_pm(id)) id++;
+        return id;
+    }
+
+
+    // Rooms
+
+    Room add_room(string name)
+    {
+        auto room = new Room(name);
+        room_list[name] = room;
+        return room;
+    }
+
+    void del_room(string name)
+    {
+        if (name in room_list)
+            room_list.remove(name);
+    }
+
+    Room get_room(string name)
+    {
+        if (name !in room_list)
+            return null;
+
+        return room_list[name];
+    }
+
+    ulong[string] room_stats()
+    {
+        ulong[string] stats;
+        foreach (room ; room_list.values) stats[room.name] = room.nb_users;
+        return stats;
     }
 
 
@@ -368,7 +441,7 @@ class Server
 
             case "rooms":
                 string list;
-                foreach (room ; Room.rooms)
+                foreach (room ; room_list.values)
                     list ~= "%s:%d ".format(room.name, room.nb_users);
                 admin_pm(admin, list);
                 break;
@@ -398,7 +471,7 @@ class Server
 
     private void admin_pm(User admin, string message)
     {
-        PM pm = new PM(message, server_user, admin.username);
+        const pm = add_pm(message, server_user, admin.username);
         const new_message = true;
         admin.send_pm(pm, new_message);
     }

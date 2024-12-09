@@ -21,8 +21,6 @@ import std.stdio : writefln;
 
 class User
 {
-    // Attributes
-
     string                  username;
     uint                    major_version;
     uint                    minor_version;
@@ -40,27 +38,25 @@ class User
     bool                    should_quit;
 
     Socket                  sock;
-    Server                  server;
+
+    private Server          server;
 
     private uint            address;
     private ushort          port;
-
     private long            priv_expiration;
 
     private string[string]  liked_things;
     private string[string]  hated_things;
 
-    private string[string]  watch_list;
-
     private Room[string]    joined_rooms;
+
+    private string[string]  watch_list;
 
     private ubyte[]         in_buf;
     private uint            in_msg_size = -1;
     private ubyte[]         out_buf;
     private OutBuffer       msg_size_buf = new OutBuffer();
 
-
-    // Constructor
 
     this(Server serv, Socket sock, uint address)
     {
@@ -71,17 +67,18 @@ class User
     }
 
 
-    // Misc
+    // Status
 
-    void send_pm(PM pm, bool new_message)
+    private void set_status(uint new_status)
     {
-        send_message(
-            new SMessageUser(
-                pm.id, cast(uint) pm.timestamp, pm.from, pm.content,
-                new_message
-            )
+        status = new_status;
+        send_to_watching(
+            new SGetUserStatus(username, new_status, privileged)
         );
     }
+
+
+    // Stats
 
     private void calc_speed(uint new_speed)
     {
@@ -281,6 +278,54 @@ class User
     }
 
 
+    // Private Messages
+
+    void send_pm(PM pm, bool new_message)
+    {
+        send_message(
+            new SMessageUser(
+                pm.id, cast(uint) pm.timestamp, pm.from, pm.content,
+                new_message
+            )
+        );
+    }
+
+
+    // Rooms
+
+    void join_room(string name)
+    {
+        auto room = server.get_room(name);
+        if (!room) room = server.add_room(name);
+
+        joined_rooms[name] = room;
+        room.add_user(this);
+    }
+
+    bool leave_room(string name)
+    {
+        if (name !in joined_rooms)
+            return false;
+
+        auto room = server.get_room(name);
+
+        room.remove_user(username);
+        joined_rooms.remove(name);
+
+        if (room.nb_users == 0)
+            server.del_room(name);
+
+        return true;
+    }
+
+    string list_joined_rooms()
+    {
+        string rooms;
+        foreach (name, room ; joined_rooms) rooms ~= name ~ " ";
+        return rooms;
+    }
+
+
     // Watchlist
 
     private void watch(string peer_username)
@@ -304,7 +349,7 @@ class User
         if (peer_username in watch_list)
             return true;
 
-        foreach (room_name, room ; joined_rooms)
+        foreach (room ; joined_rooms)
             if (room.is_joined(peer_username))
                 return true;
 
@@ -319,35 +364,6 @@ class User
         );
         foreach (user ; server.users)
             if (user.is_watching(username)) user.send_message(msg);
-    }
-
-    private void set_status(uint new_status)
-    {
-        status = new_status;
-        send_to_watching(
-            new SGetUserStatus(username, new_status, privileged)
-        );
-    }
-
-
-    // Rooms
-
-    void join_room(Room room)
-    {
-        joined_rooms[room.name] = room;
-    }
-
-    void leave_room(Room room)
-    {
-        if (room.name in joined_rooms)
-            joined_rooms.remove(room.name);
-    }
-
-    string list_joined_rooms()
-    {
-        string rooms;
-        foreach (room_name, room ; joined_rooms) rooms ~= room_name ~ " ";
-        return rooms;
     }
 
 
@@ -575,34 +591,25 @@ class User
 
             case SayChatroom:
                 const msg = new USayChatroom(msg_buf, username);
-                auto room = Room.get_room(msg.room);
+                auto room = server.get_room(msg.room);
                 if (!room)
                     break;
 
                 room.say(username, msg.message);
-                foreach (global_username ; Room.global_room_users) {
-                    auto user = server.get_user(global_username);
-                    user.send_message(
-                        new SGlobalRoomMessage(
-                            msg.room, username, msg.message
-                        )
-                    );
-                }
+                server.global_room.say(msg.room, username, msg.message);
                 break;
 
             case JoinRoom:
                 const msg = new UJoinRoom(msg_buf, username);
                 if (server.check_name(msg.room))
-                    Room.join_room(msg.room, this);
+                    join_room(msg.room);
                 break;
 
             case LeaveRoom:
                 const msg = new ULeaveRoom(msg_buf, username);
-                auto room = Room.get_room(msg.room);
-                if (!room)
+                if (!leave_room(msg.room))
                     break;
 
-                room.leave(this);
                 send_message(new SLeaveRoom(msg.room));
                 break;
 
@@ -634,21 +641,20 @@ class User
                 }
                 else if (user) {
                     // user is connected
-                    auto pm = new PM(msg.message, username, msg.user);
+                    const pm = server.add_pm(msg.message, username, msg.user);
                     const new_message = true;
 
-                    PM.add_pm(pm);
                     user.send_pm(pm, new_message);
                 }
                 else if (server.db.user_exists(msg.user)) {
                     // user exists but not connected
-                    PM.add_pm(new PM(msg.message, username, msg.user));
+                    server.add_pm(msg.message, username, msg.user);
                 }
                 break;
 
             case MessageAcked:
                 const msg = new UMessageAcked(msg_buf, username);
-                PM.del_pm(msg.id);
+                server.del_pm(msg.id);
                 break;
 
             case FileSearch:
@@ -769,7 +775,7 @@ class User
 
             case RoomList:
                 const msg = new URoomList(msg_buf, username);
-                send_message(new SRoomList(Room.room_stats));
+                send_message(new SRoomList(server.room_stats));
                 break;
 
             case CheckPrivileges:
@@ -802,7 +808,7 @@ class User
 
             case SetRoomTicker:
                 const msg = new USetRoomTicker(msg_buf, username);
-                auto room = Room.get_room(msg.room);
+                auto room = server.get_room(msg.room);
                 if (room) room.add_ticker(username, msg.tick);
                 break;
 
@@ -866,21 +872,21 @@ class User
                     if (!user)
                         continue;
 
-                    user.send_pm(
-                        new PM(msg.message, username, target_username),
-                        new_message
+                    const pm = server.add_pm(
+                        msg.message, username, target_username
                     );
+                    user.send_pm(pm, new_message);
                 }
                 break;
 
             case JoinGlobalRoom:
                 const msg = new UJoinGlobalRoom(msg_buf, username);
-                Room.add_global_room_user(username);
+                server.global_room.add_user(this);
                 break;
 
             case LeaveGlobalRoom:
                 const msg = new ULeaveGlobalRoom(msg_buf, username);
-                Room.remove_global_room_user(username);
+                server.global_room.remove_user(username);
                 break;
 
             case CantConnectToPeer:
@@ -923,13 +929,13 @@ class User
                 server.encode_password(msg.password), supporter
             )
         );
-        send_message(new SRoomList(Room.room_stats));
+        send_message(new SRoomList(server.room_stats));
         send_message(
             new SWishlistInterval(privileged ? 120 : 720)  // in seconds
         );
         set_status(Status.online);
 
-        foreach (pm ; PM.get_pms_for(username)) {
+        foreach (pm ; server.get_pms_for(username)) {
             const new_message = false;
             debug (user) writefln(
                 "Sending offline PM (id %d) from %s to %s",
@@ -944,8 +950,8 @@ class User
         if (status == Status.offline)
             return;
 
-        foreach (room ; joined_rooms) room.leave(this);
-        Room.remove_global_room_user(username);
+        foreach (name, room ; joined_rooms) leave_room(name);
+        server.global_room.remove_user(username);
 
         set_status(Status.offline);
         writefln("User %s has quit", red ~ username ~ norm);
