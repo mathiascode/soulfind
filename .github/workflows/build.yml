@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        os: [linux-x86_64, macos-x86_64, macos-arm64, windows-x86_64]
+        os: [linux-x86_64, macos-x86_64, macos-arm64, windows-x86_64, windows-arm64]
         compiler: [ldc, dmd]
         type: [release, debug]
         include:
@@ -29,6 +29,10 @@ jobs:
 
           - os: windows-x86_64
             image: windows-latest
+
+          - os: windows-arm64
+            image: windows-latest
+            flags: --build=aarch64-windows
 
           - os: linux-x86_64
             compiler: ldc
