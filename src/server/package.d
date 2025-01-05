@@ -18,7 +18,7 @@ int run(string[] args)
 
     if (args.length > 3) help(args);
 
-    foreach (arg ; args[1 .. $]) {
+    foreach (ref arg ; args[1 .. $]) {
         switch (arg) {
             case "-h":
             case "--help":

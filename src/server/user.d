@@ -200,7 +200,7 @@ class User
         if (peer_username in watch_list)
             return true;
 
-        foreach (room ; joined_rooms)
+        foreach (ref room ; joined_rooms.byValue)
             if (room.is_joined(peer_username))
                 return true;
 
@@ -213,7 +213,7 @@ class User
             "Transmit=> %s (code %d) to users watching user %s...")(
             blue ~ msg.name ~ norm, msg.code, blue ~ username ~ norm
         );
-        foreach (user ; server.users)
+        foreach (ref user ; server.users.byValue)
             if (user.is_watching(username)) user.send_message(msg);
     }
 
@@ -253,8 +253,9 @@ class User
     private uint[string] global_recommendations()
     {
         uint[string] recommendations;
-        foreach (user ; server.users)
-            foreach (item ; user.liked_items) recommendations[item]++;
+        foreach (ref user ; server.users.byValue)
+            foreach (ref item ; user.liked_items.byKey)
+                recommendations[item]++;
 
         return recommendations;
     }
@@ -262,20 +263,20 @@ class User
     private uint[string] recommendations()
     {
         uint[string] recommendations;
-        foreach (user ; server.users) {
+        foreach (ref user ; server.users.byValue) {
             if (user is this)
                 continue;
 
             int weight;
-            foreach (item ; liked_items) {
+            foreach (ref item ; liked_items.byKey) {
                 if (user.likes(item)) weight++;
                 if (user.hates(item) && weight > 0) weight--;
             }
-            foreach (item ; hated_items) {
+            foreach (ref item ; hated_items.byKey) {
                 if (user.hates(item)) weight++;
                 if (user.likes(item) && weight > 0) weight--;
             }
-            if (weight > 0) foreach (item ; user.liked_items)
+            if (weight > 0) foreach (ref item ; user.liked_items.byKey)
                 recommendations[item] += weight;
         }
         return recommendations;
@@ -284,16 +285,16 @@ class User
     private uint[string] similar_users()
     {
         uint[string] usernames;
-        foreach (user ; server.users) {
+        foreach (ref user ; server.users.byValue) {
             if (user is this)
                 continue;
 
             int weight;
-            foreach (item ; liked_items) {
+            foreach (ref item ; liked_items.byKey) {
                 if (user.likes(item)) weight++;
                 if (user.hates(item) && weight > 0) weight--;
             }
-            foreach (item ; hated_items) {
+            foreach (ref item ; hated_items.byKey) {
                 if (user.hates(item)) weight++;
                 if (user.likes(item) && weight > 0) weight--;
             }
@@ -305,15 +306,16 @@ class User
     private uint[string] item_recommendations(string item)
     {
         uint[string] recommendations;
-        foreach (user ; server.users) {
+        foreach (ref user ; server.users.byValue) {
             if (user is this)
                 continue;
 
             int weight;
             if (user.likes(item)) weight++;
             if (user.hates(item) && weight > 0) weight--;
-            if (weight > 0) foreach (recommendation ; user.liked_items)
-                recommendations[recommendation] += weight;
+            if (weight > 0)
+                foreach (ref recommendation ; user.liked_items.byKey)
+                    recommendations[recommendation] += weight;
         }
         return recommendations;
     }
@@ -321,7 +323,7 @@ class User
     private string[] item_similar_users(string item)
     {
         string[] usernames;
-        foreach (user ; server.users) {
+        foreach (ref user ; server.users.byValue) {
             if (user is this)
                 continue;
             if (user.likes(item)) usernames ~= user.username;
@@ -371,12 +373,12 @@ class User
 
     void leave_joined_rooms()
     {
-        foreach (name, room ; joined_rooms)leave_room(name);
+        foreach (ref name ; joined_rooms.keys) leave_room(name);
     }
 
     string h_joined_rooms()
     {
-        return joined_rooms.keys.join(", ");
+        return joined_rooms.byKey.join(", ");
     }
 
 
@@ -512,7 +514,7 @@ class User
 
                 set_status(Status.online);
 
-                foreach (pm ; server.get_pms_for(username)) {
+                foreach (ref pm ; server.get_pms_for(username)) {
                     const new_message = false;
                     debug (user) writefln!(
                         "Sending offline PM (id %d) from %s to %s")(
@@ -923,7 +925,7 @@ class User
                 scope msg = new UMessageUsers(msg_buf, username);
                 bool new_message = true;
 
-                foreach (target_username ; msg.usernames) {
+                foreach (ref target_username ; msg.usernames) {
                     auto user = server.get_user(target_username);
                     if (!user)
                         continue;

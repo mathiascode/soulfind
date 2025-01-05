@@ -97,7 +97,7 @@ private void list_admins()
     const names = sdb.admins;
 
     writefln!("\nAdmins (%d)...")(names.length);
-    foreach (name ; names) writefln!("\t%s")(name);
+    foreach (ref name ; names) writefln!("\t%s")(name);
 
     admins();
 }
@@ -257,7 +257,7 @@ private void list_banned()
     const users = sdb.usernames("banned");
 
     writefln!("\nBanned users (%d)...")(users.length);
-    foreach (user ; users) writefln!("\t%s")(user);
+    foreach (ref user ; users) writefln!("\t%s")(user);
 
     banned_users();
 }
@@ -285,7 +285,7 @@ private class Menu
         writefln!("\n%s\n")(title);
         if (info.length > 0) writefln!("%s\n")(info);
 
-        foreach (entry ; entries)
+        foreach (ref entry ; entries)
             writeln(entry);
 
         write("\nYour choice : ");

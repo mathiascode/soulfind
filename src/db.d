@@ -174,7 +174,7 @@ class Sdb
             admins_table
         );
         string[] admins;
-        foreach (record ; query(sql)) admins ~= record[0];
+        foreach (ref record ; query(sql)) admins ~= record[0];
         return admins;
     }
 
@@ -288,7 +288,7 @@ class Sdb
             escape(filter_field), min, max
         );
         sql ~= ";";
-        foreach (record ; query(sql)) ret ~= record[0];
+        foreach (ref record ; query(sql)) ret ~= record[0];
         return ret;
     }
 

@@ -8,6 +8,7 @@ module soulfind.server.messages;
 
 import soulfind.defines : blue, norm;
 import soulfind.server.room : Ticker;
+import soulfind.server.user : User;
 import std.algorithm : sort;
 import std.bitmanip : Endian, nativeToLittleEndian, peek;
 import std.stdio : writefln;
@@ -776,10 +777,10 @@ class SRoomList : SMessage
         super(RoomList);
 
         write!uint(cast(uint) rooms.length);
-        foreach (room, users ; rooms) write!string(room);
+        foreach (ref room ; rooms.byKey) write!string(room);
 
         write!uint(cast(uint) rooms.length);
-        foreach (room, users ; rooms) write!uint(cast(uint) users);
+        foreach (ref users ; rooms.byValue) write!uint(cast(uint) users);
 
         write!uint(0);    // number of owned private rooms (unimplemented)
         write!uint(0);    // number of owned private rooms (unimplemented)
@@ -791,37 +792,36 @@ class SRoomList : SMessage
 
 class SJoinRoom : SMessage
 {
-    this(string room_name, string[] usernames, uint[string] statuses,
-         uint[string] speeds, uint[string] upload_numbers,
-         uint[string] shared_files, uint[string] shared_folders,
-         string[string] country_codes) scope
+    this(string room_name, User[string] user_list) scope
     {
         super(JoinRoom);
 
         write!string(room_name);
-        const n = cast(uint) usernames.length;
+        const n = cast(uint) user_list.length;
 
         write!uint(n);
-        foreach (username ; usernames) write!string(username);
+        foreach (ref username ; user_list.byKey) write!string(username);
 
         write!uint(n);
-        foreach (username ; usernames) write!uint(statuses[username]);
+        foreach (ref user ; user_list.byValue) write!uint(user.status);
 
         write!uint(n);
-        foreach (username ; usernames)
+        foreach (ref user ; user_list.byValue)
         {
-            write!uint(speeds          [username]);
-            write!uint(upload_numbers  [username]);
+            write!uint(user.speed);
+            write!uint(user.upload_number);
             write!uint(0);  // unknown, obsolete
-            write!uint(shared_files    [username]);
-            write!uint(shared_folders  [username]);
+            write!uint(user.shared_files);
+            write!uint(user.shared_folders);
         }
 
         write!uint(n);
-        foreach (username ; usernames) write!uint(0);  // slots_full, obsolete
+        foreach (ref username ; user_list.byKey)
+            write!uint(0);  // slots_full, obsolete
 
         write!uint(n);
-        foreach (username ; usernames) write!string(country_codes[username]);
+        foreach (ref user ; user_list.byValue)
+            write!string(user.country_code);
     }
 }
 
@@ -936,10 +936,10 @@ class SGetRecommendations : SMessage
         super(GetRecommendations);
 
         write!uint(cast(uint) recommendations.length);
-        foreach (item, level ; recommendations)
+        foreach (ref item ; recommendations.byKeyValue)
         {
-            write!string(item);
-            write!int(level);
+            write!string(item.key);
+            write!int(item.value);
         }
     }
 }
@@ -951,10 +951,10 @@ class SGetGlobalRecommendations : SMessage
         super(GlobalRecommendations);
 
         write!uint(cast(uint) recommendations.length);
-        foreach (item, level ; recommendations)
+        foreach (ref item ; recommendations.byKeyValue)
         {
-            write!string(item);
-            write!int(level);
+            write!string(item.key);
+            write!int(item.value);
         }
     }
 }
@@ -968,10 +968,10 @@ class SUserInterests : SMessage
         write!string(user);
 
         write!uint(cast(uint) likes.length);
-        foreach (item ; likes) write!string(item);
+        foreach (ref item ; likes.byKey) write!string(item);
 
         write!uint(cast(uint) hates.length);
-        foreach (item ; hates) write!string(item);
+        foreach (ref item ; hates.byKey) write!string(item);
     }
 }
 
@@ -1027,15 +1027,15 @@ class SWishlistInterval : SMessage
 
 class SSimilarUsers : SMessage
 {
-    this(uint[string] usernames) scope
+    this(uint[string] users) scope
     {
         super(SimilarUsers);
 
-        write!uint(cast(uint) usernames.length);
-        foreach (username, weight ; usernames)
+        write!uint(cast(uint) users.length);
+        foreach (ref user ; users.byKeyValue)
         {
-            write!string(username);
-            write!uint(weight);
+            write!string(user.key);
+            write!uint(user.value);
         }
     }
 }
@@ -1049,10 +1049,10 @@ class SItemRecommendations : SMessage
         write!string(item);
         write!uint(cast(uint) recommendations.length);
 
-        foreach (recommendation, weight ; recommendations)
+        foreach (ref recommendation ; recommendations.byKeyValue)
         {
-            write!string (recommendation);
-            write!int(weight);
+            write!string(recommendation.key);
+            write!int(recommendation.value);
         }
     }
 }
@@ -1065,19 +1065,19 @@ class SItemSimilarUsers : SMessage
 
         write!string(item);
         write!uint(cast(uint) usernames.length);
-        foreach (username ; usernames) write!string(username);
+        foreach (ref username ; usernames) write!string(username);
     }
 }
 
 class SRoomTicker : SMessage
 {
-    this(string room_name, Ticker[] tickers) scope
+    this(string room_name, Ticker[string] tickers) scope
     {
         super(RoomTicker);
 
         write!string(room_name);
         write!uint(cast(uint) tickers.length);
-        foreach (ticker ; sort_timestamp(tickers))
+        foreach (ref ticker ; sort_timestamp(tickers.values))
         {
             write!string(ticker.username);
             write!string(ticker.content);

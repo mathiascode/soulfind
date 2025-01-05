@@ -34,6 +34,7 @@ class Server
 {
     Sdb                   db;
     GlobalRoom            global_room;
+    User[string]          users;
 
     private MonoTime      started_at;
     private ushort        port;
@@ -45,7 +46,6 @@ class Server
 
     private PM[uint]      pm_list;
     private Room[string]  room_list;
-    private User[string]  user_list;
 
 
     this(string db_filename)
@@ -131,7 +131,11 @@ class Server
                 }
             }
 
-            foreach (user_sock, user ; user_socks) {
+            // Since we might remove items from the array in del_user() while
+            // iterating, create a copy of it using .keys to prevent undefined
+            // behavior.
+            foreach (ref user_sock ; user_socks.keys) {
+                auto user = user_socks[user_sock];
                 const recv_ready = read_socks.isSet(user_sock);
                 const send_ready = write_socks.isSet(user_sock);
                 bool recv_success = true;
@@ -302,13 +306,14 @@ class Server
     PM[] get_pms_for(string username)
     {
         PM[] pms;
-        foreach (pm ; pm_list) if (pm.to_username == username) pms ~= pm;
+        foreach (ref pm ; pm_list.byValue)
+            if (pm.to_username == username) pms ~= pm;
         return pms;
     }
 
     private bool find_pm(uint id)
     {
-        return(id in pm_list) ? true : false;
+        return (id in pm_list) ? true : false;
     }
 
     private uint new_pm_id()
@@ -345,7 +350,8 @@ class Server
     ulong[string] room_stats()
     {
         ulong[string] stats;
-        foreach (room ; room_list.values) stats[room.name] = room.num_users;
+        foreach (ref room ; room_list.byValue)
+            stats[room.name] = room.num_users;
         return stats;
     }
 
@@ -360,13 +366,13 @@ class Server
             blue ~ username ~ norm, user.h_client_version
         );
         if (db.is_admin(username)) writefln!("%s is an admin")(username);
-        user_list[username] = user;
+        users[username] = user;
     }
 
     User get_user(string username)
     {
-        if (username in user_list)
-            return user_list[username];
+        if (username in users)
+            return users[username];
 
         return null;
     }
@@ -387,8 +393,8 @@ class Server
             user.sock = null;
         }
 
-        if (username in user_list)
-            user_list.remove(username);
+        if (username in users)
+            users.remove(username);
 
         if (user.status == Status.offline)
             return;
@@ -400,9 +406,9 @@ class Server
         writefln!("User %s has quit")(red ~ username ~ norm);
     }
 
-    User[] users()
+    ulong num_users()
     {
-        return user_list.values;
+        return users.length;
     }
 
     private void send_to_all(scope SMessage msg)
@@ -410,7 +416,7 @@ class Server
         debug (msg) writefln!("Transmit=> %s (code %d) to all users...")(
             blue ~ msg.name ~ norm, msg.code
         );
-        foreach (user ; users) user.send_message(msg);
+        foreach (ref user ; users.byValue) user.send_message(msg);
     }
 
     void admin_message(User admin, string message)
@@ -469,8 +475,8 @@ class Server
 
             case "users":
                 const list = format!("%d connected users.\n\t%s")(
-                    user_list.length,
-                    user_list.keys.join("\n\t")
+                    num_users,
+                    users.byKey.join("\n\t")
                 );
                 admin_pm(admin, list);
                 break;
@@ -539,7 +545,7 @@ class Server
 
             case "rooms":
                 string list;
-                foreach (room ; room_list.values)
+                foreach (ref room ; room_list.byValue)
                     list ~= format!("%s:%d ")(room.name, room.num_users);
                 admin_pm(admin, list);
                 break;
@@ -577,9 +583,7 @@ class Server
     private void global_message(string message)
     {
         scope msg = new SAdminMessage(message);
-        foreach (user ; user_list) {
-            user.send_message(msg);
-        }
+        foreach (ref user ; users.byValue) user.send_message(msg);
     }
 
     private string show_user(string username)
@@ -613,7 +617,8 @@ class Server
 
     private void kick_all_users()
     {
-        foreach (user ; user_list) del_user(user);
+        // Deleting users while iterating, create a copy of array with .values
+        foreach (ref user ; users.values) del_user(user);
     }
 
     private void kick_user(string username)
@@ -641,7 +646,7 @@ class Server
     {
         return db.get_config_value("motd")
             .replace("%sversion%", VERSION)
-            .replace("%users%", user_list.length.to!string)
+            .replace("%users%", num_users.to!string)
             .replace("%username%", user.username)
             .replace("%version%", user.h_client_version);
     }
@@ -666,7 +671,7 @@ class Server
         if (!text || text.length > max_length) {
             return false;
         }
-        foreach (c ; text) if (!isPrintable(c)) {
+        foreach (ref c ; text) if (!isPrintable(c)) {
             // non-ASCII control chars, etc
             return false;
         }
@@ -682,10 +687,10 @@ class Server
         const string[] forbidden_names = [server_username, ""];
         const string[] forbidden_words = ["  ", "sqlite3_"];
 
-        foreach (name ; forbidden_names) if (name == text) {
+        foreach (ref name ; forbidden_names) if (name == text) {
             return false;
         }
-        foreach (word ; forbidden_words) if (canFind(text, word)) {
+        foreach (ref word ; forbidden_words) if (canFind(text, word)) {
             return false;
         }
         return true;
