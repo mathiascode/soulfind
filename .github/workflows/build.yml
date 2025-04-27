@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         os: [linux-x86_64, linux-arm64, macos-x86_64, macos-arm64, windows-x86_64]
-        compiler: [ldc, dmd]
+        compiler: [ldc, dmd, gcc-gdc]
         type: [release, debug]
         include:
           - os: linux-x86_64
@@ -51,8 +51,17 @@ jobs:
           - os: linux-arm64
             compiler: dmd
 
+          - os: macos-x86_64
+            compiler: gcc-gdc
+
           - os: macos-arm64
             compiler: dmd
+
+          - os: macos-arm64
+            compiler: gcc-gdc
+
+          - os: windows-x86_64
+            compiler: gcc-gdc
     runs-on: ${{ matrix.image }}
     container: ${{ matrix.container }}
     env:
