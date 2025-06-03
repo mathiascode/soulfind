@@ -6,13 +6,13 @@
 module soulfind.db;
 @safe:
 
-import etc.c.sqlite3 : sqlite3, sqlite3_bind_text, sqlite3_close,
-                       sqlite3_column_count, sqlite3_column_text,
-                       sqlite3_errmsg, sqlite3_errstr,
-                       sqlite3_extended_errcode, sqlite3_finalize,
-                       sqlite3_open, sqlite3_prepare_v2, sqlite3_step,
-                       sqlite3_stmt, SQLITE_DONE, SQLITE_OK, SQLITE_ROW,
-                       SQLITE_TRANSIENT;
+import sqlite3 : sqlite3, sqlite3_bind_text, sqlite3_close,
+                 sqlite3_column_count, sqlite3_column_text,
+                 sqlite3_errmsg, sqlite3_errstr,
+                 sqlite3_extended_errcode, sqlite3_finalize,
+                 sqlite3_open, sqlite3_prepare_v2, sqlite3_step,
+                 sqlite3_stmt, SQLITE_DONE, SQLITE_OK, SQLITE_ROW,
+                 SQLITE_TRANSIENT;
 import soulfind.defines : blue, default_max_users, default_port, norm;
 import std.conv : to;
 import std.exception : ifThrown;
@@ -423,6 +423,7 @@ class Sdb
     @trusted
     private string column_text(sqlite3_stmt* statement, int index)
     {
-        return sqlite3_column_text(statement, index).fromStringz.idup;
+        const text = cast(char*) sqlite3_column_text(statement, index);
+        return text.fromStringz.idup;
     }
 }
