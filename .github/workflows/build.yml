@@ -88,6 +88,10 @@ jobs:
         if: runner.os == 'Linux'
         run: apk add ${{ matrix.compiler }} dub gcc musl-dev sqlite-static
 
+      - name: Set up D (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ${{ matrix.compiler }} dub gcc
+
       - name: Set up D (Other)
         if: runner.os != 'Linux'
         uses: dlang-community/setup-dlang@v2
