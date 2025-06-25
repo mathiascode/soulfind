@@ -23,7 +23,7 @@ import std.ascii : isASCII, isPunctuation;
 import std.bitmanip : Endian, nativeToLittleEndian, peek, read;
 import std.conv : ConvException, to;
 import std.datetime : Clock, SysTime;
-import std.digest : digest, LetterCase, secureEqual, toHexString;
+import std.digest : digest, LetterCase, toHexString;
 import std.digest.md : MD5;
 import std.random : uniform;
 import std.socket : InternetAddress, Socket;

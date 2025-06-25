@@ -16,6 +16,7 @@ const default_port            = 2242;
 const default_max_users       = 65535;
 const login_timeout           = 1.minutes;
 const kick_duration           = 2.minutes;
+const pbkdf2_iterations       = 100000;
 const max_msg_size            = 16384;
 const max_chat_message_length = 2048;
 const max_interest_length     = 64;

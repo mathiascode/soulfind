@@ -7,12 +7,12 @@ module soulfind.db;
 @safe:
 
 import core.time : days, Duration;
-import soulfind.defines : blue, default_max_users, default_port, norm;
+import soulfind.defines : blue, default_max_users, default_port, norm,
+                          pbkdf2_iterations;
+import soulfind.pwhash : create_salt, hash_password, verify_password;
 import std.array : Appender;
 import std.conv : ConvException, to;
 import std.datetime : Clock, SysTime;
-import std.digest : digest, LetterCase, secureEqual, toHexString;
-import std.digest.md : MD5;
 import std.file : exists, isFile;
 import std.stdio : writefln, writeln;
 import std.string : format, fromStringz, join, replace, toStringz;
@@ -272,18 +272,14 @@ class Sdb
         return query(sql, [username]).length > 0;
     }
 
-    private string hash_password(string password)
-    {
-        return digest!MD5(password).toHexString!(LetterCase.lower).to!string;
-    }
-
     void add_user(string username, string password)
     {
         const sql = format!(
             "INSERT INTO %s(username, password) VALUES(?, ?);")(
             users_table
         );
-        const hash = hash_password(password);
+        const salt = create_salt();
+        const hash = hash_password(password, salt, pbkdf2_iterations);
 
         query(sql, [username, hash]);
         query("PRAGMA optimize;");
@@ -308,9 +304,8 @@ class Sdb
             users_table
         );
         const stored_hash = query(sql, [username])[0][0];
-        const current_hash = hash_password(password);
 
-        return secureEqual(current_hash, stored_hash);
+        return verify_password(stored_hash, password);
     }
 
     void user_update_password(string username, string password)
@@ -319,7 +314,8 @@ class Sdb
             "UPDATE %s SET password = ? WHERE username = ?;")(
             users_table
         );
-        const hash = hash_password(password);
+        const salt = create_salt();
+        const hash = hash_password(password, salt, pbkdf2_iterations);
 
         query(sql, [hash, username]);
 
