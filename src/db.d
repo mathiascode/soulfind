@@ -6,13 +6,6 @@
 module soulfind.db;
 @safe:
 
-import etc.c.sqlite3 : sqlite3, sqlite3_bind_text, sqlite3_close,
-                       sqlite3_column_count, sqlite3_column_text,
-                       sqlite3_errmsg, sqlite3_errstr,
-                       sqlite3_extended_errcode, sqlite3_finalize,
-                       sqlite3_open, sqlite3_prepare_v2, sqlite3_step,
-                       sqlite3_stmt, SQLITE_DONE, SQLITE_OK, SQLITE_ROW,
-                       SQLITE_TRANSIENT;
 import soulfind.defines : blue, default_max_users, default_port, norm;
 import std.conv : to;
 import std.exception : ifThrown;
@@ -32,8 +25,6 @@ struct SdbUserStats
 
 class Sdb
 {
-    sqlite3* db;
-
     const users_table   = "users";
     const admins_table  = "admins";
     const config_table  = "config";
@@ -41,48 +32,12 @@ class Sdb
 
     this(string filename)
     {
-        debug(db) writefln!("DB: Using database: %s")(filename);
-        open(filename);
 
-        if (!exists(filename) || !isFile(filename))
-            throw new Exception(
-                format!("Cannot create database file %s")(filename));
-
-        const users_sql = format!(
-            "CREATE TABLE IF NOT EXISTS %s("
-          ~ " username TEXT PRIMARY KEY,"
-          ~ " password TEXT,"
-          ~ " speed INTEGER,"
-          ~ " ulnum INTEGER,"
-          ~ " files INTEGER,"
-          ~ " folders INTEGER,"
-          ~ " banned INTEGER,"
-          ~ " privileges INTEGER"
-          ~ ") WITHOUT ROWID;")(
-            users_table
-        );
-
-        const admins_sql = format!(
-            "CREATE TABLE IF NOT EXISTS %s("
-          ~ " username TEXT PRIMARY KEY,"
-          ~ " level INTEGER"
-          ~ ") WITHOUT ROWID;")(
-            admins_table
-        );
-
-        foreach (problem ; query("PRAGMA integrity_check;"))
-            debug(db) writefln!("DB: Check [%s]")(problem[0]);
-
-        query("PRAGMA optimize=0x10002;");  // =all tables
-        query(users_sql);
-        query(admins_sql);
-        init_config();
     }
 
     ~this()
     {
         debug(db) writeln("DB: Shutting down...");
-        close();
     }
 
     private void init_config()
@@ -299,130 +254,10 @@ class Sdb
         return query(sql, parameters)[0][0].to!uint.ifThrown(0);
     }
 
-    private void raise_sql_error(string query, const string[] parameters,
-                                 int res)
-    {
-        const error_code = extended_error_code(db);
-        const error_string = error_string(error_code);
-
-        writefln!("DB: Query [%s]")(query);
-        writefln!("DB: Parameters [%s]")(parameters.join(", "));
-        writefln!("DB: Result code %d.\n\n%s\n")(res, error_msg(db));
-
-        throw new Exception(
-            format!("SQLite error %d (%s)")(error_code, error_string)
-        );
-    }
-
     private string[][] query(string query, const string[] parameters = [])
     {
         string[][] ret;
-        sqlite3_stmt* stmt;
-
-        int res = prepare(db, query, stmt);
-        if (res != SQLITE_OK) {
-            raise_sql_error(query, parameters, res);
-            return ret;
-        }
-
-        foreach (i, parameter ; parameters) {
-            res = bind_text(stmt, cast(int) i + 1, parameter);
-            if (res != SQLITE_OK) {
-                finalize(stmt);
-                raise_sql_error(query, parameters, res);
-                return ret;
-            }
-        }
-
-        res = step(stmt);
-
-        while (res == SQLITE_ROW) {
-            string[] record;
-            const n = column_count(stmt);
-
-            for (int i ; i < n ; i++)
-                record ~= column_text(stmt, i);
-
-            ret ~= record;
-            res = step(stmt);
-        }
-
-        finalize(stmt);
-
-        if (res != SQLITE_DONE)
-            raise_sql_error(query, parameters, res);
 
         return ret;
-    }
-
-    @trusted
-    private void open(string filename)
-    {
-        sqlite3_open(filename.toStringz, &db);
-    }
-
-    @trusted
-    private void close() scope
-    {
-        sqlite3_close(db);
-    }
-
-    @trusted
-    private int extended_error_code(sqlite3* db)
-    {
-        return sqlite3_extended_errcode(db);
-    }
-
-    @trusted
-    private string error_string(int error_code)
-    {
-        return sqlite3_errstr(error_code).fromStringz.idup;
-    }
-
-    @trusted
-    private string error_msg(sqlite3* db)
-    {
-        return sqlite3_errmsg(db).fromStringz.idup;
-    }
-
-    @trusted
-    private int prepare(sqlite3* db, string query, out sqlite3_stmt* statement)
-    {
-        return sqlite3_prepare_v2(
-            db, query.toStringz, cast(int) query.length, &statement, null
-        );
-    }
-
-    @trusted
-    private int bind_text(sqlite3_stmt* statement, int index, string value)
-    {
-        return sqlite3_bind_text(
-            statement, index, value.toStringz, cast(int) value.length,
-            SQLITE_TRANSIENT
-        );
-    }
-
-    @trusted
-    private void finalize(sqlite3_stmt* statement)
-    {
-        sqlite3_finalize(statement);
-    }
-
-    @trusted
-    private int step(sqlite3_stmt* statement)
-    {
-        return sqlite3_step(statement);
-    }
-
-    @trusted
-    private int column_count(sqlite3_stmt* statement)
-    {
-        return sqlite3_column_count(statement);
-    }
-
-    @trusted
-    private string column_text(sqlite3_stmt* statement, int index)
-    {
-        return sqlite3_column_text(statement, index).fromStringz.idup;
     }
 }

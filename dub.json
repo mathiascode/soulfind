@@ -38,8 +38,6 @@
             "targetType": "executable",
             "targetPath": "bin",
             "targetName": "soulfind",
-            "libs-posix": ["sqlite3"],
-            "libs-windows": ["winsqlite3"],
             "lflags-linux-ldc": ["-flto=full"],
             "excludedSourceFiles": ["src/setup/*"]
         },
@@ -48,8 +46,6 @@
             "targetType": "executable",
             "targetPath": "bin",
             "targetName": "soulsetup",
-            "libs-posix": ["sqlite3"],
-            "libs-windows": ["winsqlite3"],
             "lflags-linux-ldc": ["-flto=full"],
             "excludedSourceFiles": ["src/server/*"]
         }
