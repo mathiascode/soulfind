@@ -27,6 +27,7 @@ jobs:
           - os: linux-x86_64
             compiler: ldc
             config: static
+            dflags: -linker=lld
 
           - os: linux-arm64
             arch: aarch64
@@ -36,6 +37,7 @@ jobs:
           - os: linux-arm64
             compiler: ldc
             config: static
+            dflags: -linker=lld
 
           - os: macos-x86_64
             arch: x86_64
@@ -67,6 +69,7 @@ jobs:
     runs-on: ${{ matrix.image }}
     container: ${{ matrix.container }}
     env:
+      DFLAGS: ${{ matrix.dflags }}
       MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
     steps:
       # Workaround from https://github.com/actions/runner/issues/801#issuecomment-2394392502
@@ -84,7 +87,7 @@ jobs:
 
       - name: Set up D (Linux)
         if: runner.os == 'Linux'
-        run: apk add ${{ matrix.compiler }} dub gcc musl-dev sqlite-static
+        run: apk add ${{ matrix.compiler }} dub gcc musl-dev pkgconf sqlite-static
 
       - name: Set up D (Other)
         if: runner.os != 'Linux'

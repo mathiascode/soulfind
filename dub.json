@@ -40,6 +40,7 @@
             "targetName": "soulfind",
             "libs-posix": ["sqlite3"],
             "libs-windows": ["winsqlite3"],
+            "lflags-linux-ldc": ["-flto=full"],
             "excludedSourceFiles": ["src/setup/*"]
         },
         {
@@ -49,6 +50,7 @@
             "targetName": "soulsetup",
             "libs-posix": ["sqlite3"],
             "libs-windows": ["winsqlite3"],
+            "lflags-linux-ldc": ["-flto=full"],
             "excludedSourceFiles": ["src/server/*"]
         }
     ]
