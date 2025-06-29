@@ -7,18 +7,6 @@ module soulfind.db;
 @safe:
 
 import core.time : days, Duration;
-import etc.c.sqlite3 : sqlite3, sqlite3_bind_text, sqlite3_close,
-                       sqlite3_column_count, sqlite3_column_text,
-                       sqlite3_config, sqlite3_db_config, sqlite3_errmsg,
-                       sqlite3_errstr, sqlite3_extended_errcode,
-                       sqlite3_finalize, sqlite3_initialize, sqlite3_open,
-                       sqlite3_prepare_v2, sqlite3_shutdown, sqlite3_step,
-                       sqlite3_stmt, SQLITE_CONFIG_SINGLETHREAD,
-                       SQLITE_DBCONFIG_DEFENSIVE,
-                       SQLITE_DBCONFIG_ENABLE_TRIGGER,
-                       SQLITE_DBCONFIG_ENABLE_VIEW,
-                       SQLITE_DBCONFIG_TRUSTED_SCHEMA, SQLITE_DONE, SQLITE_OK,
-                       SQLITE_ROW, SQLITE_TRANSIENT;
 import soulfind.defines : blue, default_max_users, default_port, norm;
 import std.array : Appender;
 import std.conv : ConvException, to;
@@ -26,6 +14,57 @@ import std.datetime : Clock, SysTime;
 import std.file : exists, isFile;
 import std.stdio : writefln, writeln;
 import std.string : format, fromStringz, join, replace, toStringz;
+
+extern (C) {
+    // Manual definitions due to etc.c.sqlite3 being outdated/missing in
+    // certain GDC versions.
+    // https://github.com/dlang/phobos/blob/HEAD/etc/c/sqlite3.d
+
+    enum
+    {
+        SQLITE_OK                       = 0,
+        SQLITE_ROW                      = 100,
+        SQLITE_DONE                     = 101
+    }
+
+    enum
+    {
+        SQLITE_CONFIG_SINGLETHREAD      = 1
+    }
+
+    enum
+    {
+        SQLITE_DBCONFIG_ENABLE_TRIGGER  = 1003,
+        SQLITE_DBCONFIG_DEFENSIVE       = 1010,
+        SQLITE_DBCONFIG_ENABLE_VIEW     = 1015,
+        SQLITE_DBCONFIG_TRUSTED_SCHEMA  = 1017
+    }
+
+    struct sqlite3;
+    int sqlite3_initialize();
+    int sqlite3_shutdown();
+    int sqlite3_config(int, ...);
+    int sqlite3_db_config(sqlite3*, int op, ...);
+
+    int sqlite3_open(const(char)*filename, sqlite3 **ppDb);
+    int sqlite3_close(sqlite3 *);
+    int sqlite3_extended_errcode(sqlite3 *db);
+    const(char)* sqlite3_errmsg(sqlite3*);
+    const(char)* sqlite3_errstr(int);
+
+    struct sqlite3_stmt;
+    int sqlite3_prepare_v2(
+        sqlite3 *db, const(char)*zSql, int nByte, sqlite3_stmt **ppStmt,
+        const(char*)*pzTail
+    );
+    int sqlite3_bind_text(
+        sqlite3_stmt*, int, const char*, int n, void function (void*)
+    );
+    int sqlite3_column_count(sqlite3_stmt *pStmt);
+    int sqlite3_step(sqlite3_stmt*);
+    const (char)* sqlite3_column_text(sqlite3_stmt*, int iCol);
+    int sqlite3_finalize(sqlite3_stmt *pStmt);
+}
 
 struct SdbUserStats
 {
@@ -59,8 +98,19 @@ class Sdb
     this(string filename)
     {
         debug(db) writefln!("DB: Using database: %s")(filename);
+
+        // Soulfind is single-threaded. Disable SQLite mutexes for a slight
+        // performance improvement.
+        config(SQLITE_CONFIG_SINGLETHREAD);
+
         initialize();
         open(filename);
+
+        // https://www.sqlite.org/security.html
+        db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1);
+        db_config(db, SQLITE_DBCONFIG_ENABLE_TRIGGER, 0);
+        db_config(db, SQLITE_DBCONFIG_ENABLE_VIEW, 0);
+        db_config(db, SQLITE_DBCONFIG_TRUSTED_SCHEMA, 0);
 
         if (!exists(filename) || !isFile(filename))
             throw new SdbException(
@@ -520,22 +570,28 @@ class Sdb
         return query(sql, parameters)[0][0].to!uint;
     }
 
-    private void raise_sql_error(string query, const string[] parameters,
-                                 int res)
+    private void raise_sql_error(string query = null,
+                                 const string[] parameters = null,
+                                 int res = 0)
     {
         const error_code = extended_error_code(db);
         const error_string = error_string(error_code);
 
-        writefln!("DB: Query [%s]")(query);
-        writefln!("DB: Parameters [%s]")(parameters.join(", "));
-        writefln!("DB: Result code %d.\n\n%s\n")(res, error_msg(db));
+        if (query)
+            writefln!("DB: Query [%s]")(query);
+
+        if (parameters)
+            writefln!("DB: Parameters [%s]")(parameters.join(", "));
+
+        if (res)
+            writefln!("DB: Result code %d.\n\n%s\n")(res, error_msg(db));
 
         throw new SdbException(
             format!("SQLite error %d (%s)")(error_code, error_string)
         );
     }
 
-    private string[][] query(string query, const string[] parameters = [])
+    private string[][] query(string query, const string[] parameters = null)
     {
         Appender!(string[][]) ret;
         sqlite3_stmt* stmt;
@@ -576,36 +632,46 @@ class Sdb
     @trusted
     private void initialize()
     {
-        // Soulfind is single-threaded. Disable SQLite mutexes for a slight
-        // performance improvement.
-        sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
-
         if (sqlite3_initialize() != SQLITE_OK)
-            throw new SdbException("Cannot start SQLite");
+            raise_sql_error();
+    }
+
+    @trusted
+    private void shutdown() scope
+    {
+        if (sqlite3_shutdown() != SQLITE_OK)
+            raise_sql_error();
+    }
+
+    @trusted
+    private void config(int option)
+    {
+        if (sqlite3_config(option) != SQLITE_OK)
+            raise_sql_error();
+    }
+
+    @trusted
+    private void db_config(sqlite3* db, int option, int value)
+    {
+        if (sqlite3_db_config(db, option, value, null) != SQLITE_OK)
+            // Ignore response, since SQLite shipped with older Windows and
+            // macOS versions may lack newer options. Other operations will
+            // proceed as usual.
+            return;
     }
 
     @trusted
     private void open(string filename)
     {
-        sqlite3_open(filename.toStringz, &db);
-
-        // https://www.sqlite.org/security.html
-        sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, null);
-        sqlite3_db_config(db, SQLITE_DBCONFIG_ENABLE_TRIGGER, 0, null);
-        sqlite3_db_config(db, SQLITE_DBCONFIG_ENABLE_VIEW, 0, null);
-        sqlite3_db_config(db, SQLITE_DBCONFIG_TRUSTED_SCHEMA, 0, null);
+        if (sqlite3_open(filename.toStringz, &db) != SQLITE_OK)
+            raise_sql_error();
     }
 
     @trusted
     private void close() scope
     {
-        sqlite3_close(db);
-    }
-
-    @trusted
-    private void shutdown()
-    {
-        sqlite3_shutdown();
+        if (sqlite3_close(db) != SQLITE_OK)
+            raise_sql_error();
     }
 
     @trusted
@@ -615,15 +681,15 @@ class Sdb
     }
 
     @trusted
-    private string error_string(int error_code)
-    {
-        return sqlite3_errstr(error_code).fromStringz.idup;
-    }
-
-    @trusted
     private string error_msg(sqlite3* db)
     {
         return sqlite3_errmsg(db).fromStringz.idup;
+    }
+
+    @trusted
+    private string error_string(int error_code)
+    {
+        return sqlite3_errstr(error_code).fromStringz.idup;
     }
 
     @trusted
@@ -638,21 +704,8 @@ class Sdb
     private int bind_text(sqlite3_stmt* statement, int index, string value)
     {
         return sqlite3_bind_text(
-            statement, index, value.toStringz, cast(int) value.length,
-            SQLITE_TRANSIENT
+            statement, index, value.toStringz, cast(int) value.length, null
         );
-    }
-
-    @trusted
-    private void finalize(sqlite3_stmt* statement)
-    {
-        sqlite3_finalize(statement);
-    }
-
-    @trusted
-    private int step(sqlite3_stmt* statement)
-    {
-        return sqlite3_step(statement);
     }
 
     @trusted
@@ -662,8 +715,21 @@ class Sdb
     }
 
     @trusted
+    private int step(sqlite3_stmt* statement)
+    {
+        return sqlite3_step(statement);
+    }
+
+    @trusted
     private string column_text(sqlite3_stmt* statement, int index)
     {
         return sqlite3_column_text(statement, index).fromStringz.idup;
+    }
+
+    @trusted
+    private void finalize(sqlite3_stmt* statement)
+    {
+        if (sqlite3_finalize(statement) != SQLITE_OK)
+            raise_sql_error();
     }
 }

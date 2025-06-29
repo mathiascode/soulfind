@@ -32,11 +32,22 @@ To build Soulfind with debug logging enabled:
 dub build --debug=db --debug=msg --debug=user
 ```
 
-LDC is used as the default D compiler. Set the DC environment variable to
-`dmd` to use DMD instead:
+To build a static binary on supported systems (mainly musl-based Linux
+distributions), run:
+
+```sh
+dub build --config=static
+```
+
+LDC is used as the default D compiler. Set the DC environment variable to use
+a different compiler:
 
 ```sh
 DC=dmd dub build
+```
+
+```sh
+DC=gdc dub build
 ```
 
 
