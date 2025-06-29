@@ -54,7 +54,7 @@ jobs:
             image: windows-latest
 
           - os: windows-arm64
-            image: windows-latest
+            image: windows-11-arm
 
         exclude:
           - os: linux-arm64
@@ -105,14 +105,7 @@ jobs:
         with:
           compiler: ${{ matrix.compiler }}
 
-      - name: Build (Windows arm64)
-        if: matrix.os == 'windows-arm64'
-        run: |
-          $vsPath = vswhere -property installationPath
-          cmd /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" -arch=arm64 -host_arch=x64 && dub build -v --build=${{ matrix.type }} --arch=aarch64-windows-msvc ${{ matrix.flags }}"
-
       - name: Build (Other)
-        if: matrix.os != 'windows-arm64'
         run: dub build -v --build=${{ matrix.type }} --config=${{ matrix.config }} ${{ matrix.flags }}
 
       - name: Run tests
