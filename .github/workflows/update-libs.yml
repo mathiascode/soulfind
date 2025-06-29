@@ -1,12 +1,16 @@
 # SPDX-FileCopyrightText: 2025 Soulfind Contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-name: Libs
-on: [workflow_dispatch]
-permissions: {}
+name: Update Libs
+on:
+  push:
+    paths:
+      - 'lib/**.ref'
+permissions:
+  contents: write
 
 jobs:
-  libs:
+  update-libs:
     timeout-minutes: 15
     strategy:
       matrix:
@@ -16,13 +20,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
       - name: Generate .lib file
         run: |
           $vsPath = vswhere -property installationPath
           cmd /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" && lib /def:lib\winsqlite3.def /out:lib\winsqlite3-${{ matrix.arch }}.lib /machine:${{ matrix.arch }}"
 
-      - name: Archive artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: winsqlite3-lib-${{ matrix.arch }}
-          path: lib/winsqlite3-${{ matrix.arch }}.lib
+      - name: Commit .lib file
+        run: |
+          git add lib/winsqlite3-${{ matrix.arch }}.lib
+          git commit -m "Update winsqlite3-${{ matrix.arch }}.lib"
+          git push
