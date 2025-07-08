@@ -83,6 +83,7 @@ final class Setup
                 MenuItem("4", "Private mode",      &private_mode),
                 MenuItem("5", "Max users allowed", &max_users),
                 MenuItem("6", "MOTD",              &motd),
+                MenuItem("7", "Filtered searches", &filtered_searches),
                 MenuItem("i", "Server info",       &server_info),
                 MenuItem("q", "Exit",              &exit)
             ]
@@ -97,7 +98,7 @@ final class Setup
             text(bold, "Admins (", db.num_users("admin"), ")", norm),
             [
                 MenuItem("1", "Add/renew an admin", &add_admin),
-                MenuItem("2", "Remove an admin",    &del_admin),
+                MenuItem("2", "Remove an admin",    &remove_admin),
                 MenuItem("3", "List admins",        &list_admins),
                 MenuItem("q", "Return",             &main_menu)
             ]
@@ -138,7 +139,7 @@ final class Setup
         admins();
     }
 
-    private void del_admin()
+    private void remove_admin()
     {
         write("\nAdmin to remove: ");
         const username = input.strip;
@@ -302,6 +303,95 @@ final class Setup
         motd();
     }
 
+    private void filtered_searches()
+    {
+        show_menu(
+            text(
+                bold, "Filtered search phrases", norm,
+                "\n\tserver-side: ", 0,
+                "\n\tclient-side: ", db.num_client_search_filters
+            ),
+            [
+                MenuItem("1", "Filter client phrase",   &add_client_phrase),
+                MenuItem("2", "Unfilter client phrase", &remove_client_phrase),
+                MenuItem("3", "List server phrases",    &list_server_phrases),
+                MenuItem("4", "List client phrases",    &list_client_phrases),
+                MenuItem("q", "Return",                 &main_menu)
+            ]
+        );
+    }
+
+    private void add_client_phrase()
+    {
+        write("\nPhrase to filter client-side: ");
+        const phrase = input.strip.toLower;
+
+        if (db.is_search_client_filtered(phrase)) {
+            writeln(
+                "\nPhrase ", red, phrase, norm,
+                " is already filtered client-side"
+            );
+            filtered_searches();
+            return;
+        }
+
+        db.filter_client_search(phrase);
+
+        writeln("\nFiltered phrase ", blue, phrase, norm, " client-side");
+        filtered_searches();
+    }
+
+    private void remove_client_phrase()
+    {
+        write("\nPhrase to unfilter client-side: ");
+        const phrase = input.strip.toLower;
+
+        if (db.is_search_client_filtered(phrase)) {
+            db.unfilter_client_search(phrase);
+            writeln(
+                "\nUnfiltered phrase ", blue, phrase, norm, " client-side"
+            );
+        }
+        else
+            writeln(
+                "\nPhrase ", red, phrase, norm, " is not filtered client-side"
+            );
+
+        filtered_searches();
+    }
+
+    private void list_server_phrases()
+    {
+        string[] phrases;
+
+        Appender!string output;
+        output ~= text("\n", bold, "Filtered phrases (server-side):", norm);
+
+        foreach (phrase ; phrases) {
+            output ~= "\n\t";
+            output ~= phrase;
+        }
+
+        writeln(output[]);
+        filtered_searches();
+    }
+
+    private void list_client_phrases()
+    {
+        const phrases = db.client_search_filters;
+
+        Appender!string output;
+        output ~= text("\n", bold, "Filtered phrases (client-side):", norm);
+
+        foreach (phrase ; phrases) {
+            output ~= "\n\t";
+            output ~= phrase;
+        }
+
+        writeln(output[]);
+        filtered_searches();
+    }
+
     private void registered_users()
     {
         const now = Clock.currTime.toUnixTime;
@@ -327,9 +417,8 @@ final class Setup
 
     private void add_user()
     {
-        string username;
         write("\nUsername: ");
-        username = input.strip;
+        const username = input.strip;
 
         if (username.length == 0) {
             writeln("\nNo username provided");

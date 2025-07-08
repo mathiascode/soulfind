@@ -256,10 +256,14 @@ final class User
         scope privileged_users_msg = new SPrivilegedUsers(
             privileged_users
         );
+        scope excluded_phrases_msg = new SExcludedSearchPhrases(
+            server.db.client_search_filters
+        );
         send_message(response_msg);
         send_message(room_list_msg);
         send_message(wish_interval_msg);
         send_message(privileged_users_msg);
+        send_message(excluded_phrases_msg);
 
         update_status(UserStatus.online);
         server.send_queued_pms(username);

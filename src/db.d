@@ -91,8 +91,9 @@ final class Sdb
 {
     private sqlite3* db;
 
-    private const users_table   = "users";
-    private const config_table  = "config";
+    private const users_table           = "users";
+    private const config_table          = "config";
+    private const client_filters_table  = "client_search_filters";
 
 
     this(string filename)
@@ -127,11 +128,18 @@ final class Sdb
             ") WITHOUT ROWID;"
         );
 
+        const client_filters_sql = text(
+            "CREATE TABLE IF NOT EXISTS ", client_filters_table,
+            "(phrase TEXT PRIMARY KEY",
+            ") WITHOUT ROWID;"
+        );
+
         foreach (ref problem ; query("PRAGMA integrity_check;"))
             if (log_db) writeln("DB: Check [", problem[0], "]");
 
         query("PRAGMA optimize=0x10002;");  // =all tables
         query(users_sql);
+        query(client_filters_sql);
         add_new_columns();
         init_config();
     }
@@ -277,6 +285,54 @@ final class Sdb
     void set_server_motd(string motd)
     {
         set_config_value("motd", motd);
+    }
+
+    void filter_client_search(string phrase)
+    {
+        const sql = text(
+            "REPLACE INTO ", client_filters_table, "(phrase) VALUES(?);"
+        );
+        query(sql, [phrase]);
+
+        if (log_db) writeln(
+            "DB: Filtered search phrase ", phrase, " client-side"
+        );
+    }
+
+    void unfilter_client_search(string phrase)
+    {
+        const sql = text(
+            "DELETE FROM ", client_filters_table, " WHERE phrase = ?;"
+        );
+        query(sql, [phrase]);
+
+        if (log_db) writeln(
+            "DB: Unfiltered search phrase ", phrase, " client-side"
+        );
+    }
+
+    string[] client_search_filters()
+    {
+        const sql = text(
+            "SELECT phrase FROM ", client_filters_table
+        );
+        Appender!(string[]) phrases;
+        foreach (record ; query(sql)) phrases ~= record[0];
+        return phrases[];
+    }
+
+    size_t num_client_search_filters()
+    {
+        auto sql = text("SELECT COUNT(1) FROM ", client_filters_table);
+        return query(sql)[0][0].to!size_t;
+    }
+
+    bool is_search_client_filtered(string phrase)
+    {
+        const sql = text(
+            "SELECT 1 FROM ", client_filters_table, " WHERE phrase = ?;"
+        );
+        return query(sql, [phrase]).length > 0;
     }
 
     void add_user(string username, string hash)
