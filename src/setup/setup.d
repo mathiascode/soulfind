@@ -219,8 +219,12 @@ class Setup
 
     private void max_users()
     {
+        const max_users = db.server_max_users;
         show_menu(
-            format!("Max users allowed : %d")(db.server_max_users),
+            format!(
+                "Max users allowed : %s")(
+                max_users == ulong.max ? "unlimited" : max_users.to!string
+            ),
             [
                 MenuItem("1", "Change max users", &set_max_users),
                 MenuItem("q", "Return",           &main_menu)
@@ -230,17 +234,20 @@ class Setup
 
     private void set_max_users()
     {
-        write("Max users : ");
+        write("Max users (empty for unlimited) : ");
 
         const value = input.strip;
-        uint num_users;
-        try {
-            num_users = value.to!uint;
-        }
-        catch (ConvException) {
-            writeln("Please enter a valid number");
-            set_max_users();
-            return;
+        long num_users = -1;
+
+        if (value.length > 0) {
+            try {
+                num_users = value.to!long;
+            }
+            catch (ConvException) {
+                writeln("Please enter a valid number");
+                set_max_users();
+                return;
+            }
         }
 
         db.set_server_max_users(num_users);

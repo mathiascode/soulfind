@@ -9,6 +9,7 @@ module soulfind.db;
 import core.time : days, Duration;
 import soulfind.defines : blue, default_max_users, default_motd, default_port,
                           default_private_mode, log_db, log_user, norm;
+import std.algorithm : clamp;
 import std.array : Appender;
 import std.conv : ConvException, to;
 import std.datetime : Clock, SysTime;
@@ -220,20 +221,23 @@ class Sdb
         set_config_value("port", port.to!string);
     }
 
-    uint server_max_users()
+    long server_max_users()
     {
-        uint max_users = default_max_users;
+        ulong max_users = default_max_users;
         const config_value = get_config_value("max_users");
 
         if (config_value !is null)
-            try max_users = config_value.to!uint; catch (ConvException) {}
+            try max_users = config_value.to!long; catch (ConvException) {}
 
         return max_users;
     }
 
-    void set_server_max_users(uint num_users)
+    void set_server_max_users(long num_users)
     {
-        set_config_value("max_users", num_users.to!string);
+        set_config_value("max_users", num_users
+            .clamp(-1, long.max)
+            .to!string
+        );
     }
 
     bool server_private_mode()
