@@ -29,10 +29,6 @@ jobs:
             container: alpine:edge
             config: static
 
-          - os: linux-x86_64
-            compiler: dmd
-            config: default
-
           - os: linux-arm64
             image: ubuntu-24.04-arm
             container: alpine:edge
