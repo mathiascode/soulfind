@@ -20,12 +20,12 @@
                 "soulfind:server": {
                     "version": "*",
                     "dflags": ["-static", "-L--no-export-dynamic"],
-                    "dflags-ldc": ["--flto=thin"]
+                    "dflags-ldc": ["--flto=full", "--gc"]
                 },
                 "soulfind:setup": {
                     "version": "*",
                     "dflags": ["-static", "-L--no-export-dynamic"],
-                    "dflags-ldc": ["--flto=thin"]
+                    "dflags-ldc": ["--flto=full", "--gc"]
                 }
             }
         },
