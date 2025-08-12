@@ -126,3 +126,41 @@ jobs:
           path: |
             bin
             !bin/*test*
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      TAG_NAME: latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Zip artifacts
+        run: |
+          cd dist/
+          for dir in *; do
+            if [ -d "$dir" ]; then
+              [ -f "$dir/soulfind" ] && chmod +x "$dir/soulfind"
+              [ -f "$dir/soulsetup" ] && chmod +x "$dir/soulsetup"
+              (cd "$dir" && zip -r "../$dir.zip" .)
+            fi
+          done
+
+      - name: Create release
+        run: |
+          if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+            gh release delete "$TAG_NAME" --cleanup-tag
+          fi
+          gh release create "$TAG_NAME" dist/*.zip \
+            --notes 'Automated release for latest commit.'
