@@ -105,11 +105,11 @@ jobs:
         if: matrix.os == 'windows-arm64'
         run: |
           $vsPath = vswhere -property installationPath
-          cmd /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" -arch=arm64 -host_arch=x64 && dub build -v --build=release-debug --arch=aarch64-windows-msvc"
+          cmd /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" -arch=arm64 -host_arch=x64 && dub build -v --arch=aarch64-windows-msvc"
 
       - name: Build (Other)
         if: matrix.os != 'windows-arm64'
-        run: dub build -v --build=release-debug --config=${{ matrix.config }}
+        run: dub build -v --config=${{ matrix.config }}
 
       - name: Run tests
         run: dub test
