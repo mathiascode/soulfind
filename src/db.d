@@ -6,12 +6,11 @@
 module soulfind.db;
 @safe:
 
-import core.time : days, Duration;
 import soulfind.defines : blue, default_max_users, default_motd, default_port,
                           default_private_mode, log_db, log_user, norm;
 import std.array : Appender;
 import std.conv : ConvException, text, to;
-import std.datetime.systime : Clock, SysTime;
+import std.datetime : Clock, days, Duration, SysTime;
 import std.digest : digest, LetterCase, secureEqual, toHexString;
 import std.digest.md : MD5;
 import std.stdio : writeln;

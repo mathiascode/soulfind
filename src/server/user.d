@@ -6,7 +6,6 @@
 module soulfind.server.user;
 @safe:
 
-import core.time : Duration, MonoTime, seconds;
 import soulfind.db : SdbUserStats;
 import soulfind.defines : blue, bold, log_msg, log_user, login_timeout,
                           max_chat_message_length, max_interest_length,
@@ -24,7 +23,7 @@ import std.array : Appender;
 import std.ascii : isPrintable;
 import std.bitmanip : Endian, nativeToLittleEndian, peek, read;
 import std.conv : ConvException, text, to;
-import std.datetime.systime : Clock, SysTime;
+import std.datetime : Clock, Duration, MonoTime, seconds, SysTime;
 import std.digest : digest, LetterCase, secureEqual, toHexString;
 import std.digest.md : MD5;
 import std.random : uniform;

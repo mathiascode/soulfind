@@ -6,13 +6,12 @@
 module soulfind.setup.setup;
 @safe:
 
-import core.time : days, Duration;
 import soulfind.db : Sdb;
 import soulfind.defines : VERSION;
 import std.array : Appender;
 import std.compiler : name, version_major, version_minor;
 import std.conv : ConvException, text, to;
-import std.datetime.systime : Clock, SysTime;
+import std.datetime : Clock, days, Duration, SysTime;
 import std.digest : digest, LetterCase, toHexString;
 import std.digest.md : MD5;
 import std.stdio : readln, StdioException, write, writeln;
