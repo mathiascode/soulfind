@@ -78,16 +78,6 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
     steps:
-      # Workaround from https://github.com/actions/runner/issues/801#issuecomment-2394392502
-      - name: Patch native Alpine NodeJS into Runner environment
-        if: matrix.os == 'linux-arm64'
-        run: |
-          apk upgrade
-          apk add docker nodejs
-          sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
-          docker run --rm -v /:/host alpine sh -c 'cd /host/home/runner/actions-runner/*/externals/ && rm -rf node20/* && mkdir node20/bin && ln -s /usr/bin/node node20/bin/node'
-        shell: sh
-
       - name: Checkout code
         uses: actions/checkout@v5
 
