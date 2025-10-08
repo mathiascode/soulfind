@@ -46,19 +46,14 @@ private void setup_console()
 @trusted
 private void setup_signal_handler()
 {
-    version (Posix) {
-        import core.sys.posix.signal : sigaction, sigaction_t, SIGINT, SIGTERM;
+    import core.sys.posix.signal : SIGINT, signal, SIGTERM;
 
-        extern(C) void handle_termination(int) {
-            running = false;
-        }
-
-        sigaction_t act;
-        act.sa_handler = &handle_termination;
-
-        sigaction(SIGINT, &act, null);
-        sigaction(SIGTERM, &act, null);
+    extern(C) void handle_termination(int) {
+        running = false;
     }
+    signal(SIGINT, &handle_termination);
+    signal(SIGTERM, &handle_termination);
+
     version (Windows) {
         import core.sys.windows.windows : SetConsoleCtrlHandler;
 
