@@ -6,7 +6,7 @@
 module soulfind.main;
 @safe:
 
-bool running = true;
+shared bool running = true;
 
 @trusted
 private void increase_fd_limit()
