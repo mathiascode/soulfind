@@ -103,7 +103,7 @@ final class Room
 
     // Chat
 
-    void say(string username, string message)
+    void say(string username, string message, GlobalRoom global_room)
     {
         if (username !in users)
             return;
@@ -111,8 +111,13 @@ final class Room
         if (message.length > max_chat_message_length)
             return;
 
+        foreach (ref c ; message) if (c == '\n' || c == '\r')
+            return;
+
         scope msg = new SSayChatroom(name, username, message);
         send_to_all(msg);
+
+        global_room.say(name, username, message);
     }
 
 

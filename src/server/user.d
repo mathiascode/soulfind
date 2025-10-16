@@ -812,14 +812,8 @@ final class User
                     break;
 
                 auto room = server.get_room(msg.room_name);
-                if (room is null)
-                    break;
-
-                if (!room.is_joined(username))
-                    break;
-
-                room.say(username, msg.message);
-                server.global_room.say(msg.room_name, username, msg.message);
+                if (room !is null)
+                    room.say(username, msg.message, server.global_room);
                 break;
 
             case JoinRoom:
@@ -865,6 +859,11 @@ final class User
 
                 if (msg.message.length > max_chat_message_length)
                     break;
+
+                foreach (ref c ; msg.message) if (c == '\n' || c == '\r') {
+                    writeln(c);
+                    break;
+                }
 
                 auto user = server.get_user(msg.username);
 
