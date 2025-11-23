@@ -57,9 +57,6 @@ jobs:
             compiler: dmd
 
           - os: macos-x86_64
-            compiler: dmd
-
-          - os: macos-x86_64
             compiler: gdc
 
           - os: macos-arm64
