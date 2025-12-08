@@ -10,9 +10,9 @@ import soulfind.db : Sdb, SdbUserStats;
 import soulfind.defines : blue, bold, log_user, login_timeout,
                           max_interest_length, max_room_name_length,
                           max_user_interests, max_username_length, norm,
-                          pbkdf2_iterations, red, RoomType, server_username,
-                          speed_weight, user_check_interval, VERSION,
-                          wish_interval, wish_interval_privileged;
+                          pbkdf2_iterations, red, RoomMemberType, RoomType,
+                          server_username, speed_weight, user_check_interval,
+                          VERSION, wish_interval, wish_interval_privileged;
 import soulfind.pwhash : create_salt, hash_password_async,
                          verify_password_async;
 import soulfind.server.conns : Logging, UserConnection;
@@ -49,6 +49,7 @@ final class User
     uint                    shared_files;
     uint                    shared_folders;
     SysTime                 privileged_until;
+    bool                    accept_room_invitations;
 
     private Server          server;
     private UserConnection  conn;
@@ -607,20 +608,173 @@ final class User
         room.add_user(this);
     }
 
-    bool leave_room(string room_name)
+    bool leave_room(string room_name, bool permanent = false)
     {
         if (room_name !in joined_rooms)
             return false;
 
         auto room = server.get_room(room_name);
 
+        if (permanent && room.type == RoomType._private) {
+            scope room_removed_msg = new SPrivateRoomRemoved(room_name);
+            send_message(room_removed_msg);
+        }
+
         room.remove_user(username);
         joined_rooms.remove(room_name);
 
-        if (room.num_users == 0)
-            server.del_room(room_name);
+        if (room.num_users == 0) {
+            const del_permanent = (
+                room.type == RoomType._public && room.num_tickers == 0
+            );
+            server.del_room(room_name, del_permanent);
+        }
+
+        if (permanent && room.type == RoomType._private)
+            server.send_room_list(username);
 
         return true;
+    }
+
+   void grant_room_membership(string room_name, string target_username)
+    {
+        if (target_username == username)
+            return;
+
+        const owner = server.db.get_room_owner(room_name);
+        const room_member_type = server.db.get_room_member_type(
+            room_name, username
+        );
+
+        if (owner != username && room_member_type != RoomMemberType.operator)
+            return;
+
+        auto user = server.get_user(target_username);
+        if (user is null) {
+            server.send_pm(
+                server_username, username,
+                text("user ", target_username, " is not logged in.")
+            );
+            return;
+        }
+
+        if (!user.accept_room_invitations) {
+            server.send_pm(
+                server_username, username,
+                text(
+                    "user ", target_username, " hasn’t enabled private ",
+                    "room add. please message them and ask them to ",
+                    "do so before trying to add them again."
+                )
+            );
+            return;
+        }
+
+        if (owner == target_username) {
+            server.send_pm(
+                server_username, username,
+                text(
+                    "user ", target_username, " is the owner of room ",
+                    room_name
+                )
+            );
+            return;
+        }
+
+        if (server.db.get_room_member_type(
+                room_name, target_username) != RoomMemberType.non_existent) {
+            server.send_pm(
+                server_username, username,
+                text(
+                    "user ", target_username,
+                    " is already a member of room ", room_name
+                )
+            );
+            return;
+        }
+
+        server.db.add_room_member!(RoomMemberType.normal)(
+            room_name, target_username
+        );
+
+        const members = server.db.room_members!(RoomMemberType.any)(room_name);
+        foreach (ref room_username ; members ~ [owner]) {
+            auto room_user = server.get_user(room_username);
+            if (room_user is null)
+                continue;
+
+            scope msg = new SPrivateRoomAddUser(room_name, target_username);
+            room_user.send_message(msg);
+        }
+
+        scope msg = new SPrivateRoomAdded(room_name);
+        user.send_message(msg);
+        server.send_room_list(target_username);
+
+        if (owner == username)
+            server.send_pm(
+                server_username, owner,
+                text(
+                    "User ", target_username,
+                    " is now a member of room ", room_name
+                )
+            );
+        else if (room_member_type == RoomMemberType.operator)
+            server.send_pm(
+                server_username, owner,
+                text(
+                    "User ", target_username,
+                    " was added as a member of room ", room_name,
+                    " by operator ", username
+                )
+            );
+    }
+
+    void cancel_room_membership(string room_name, string target_username)
+    {
+        const target_member_type = server.db.get_room_member_type(
+            room_name, target_username
+        );
+        if (target_member_type == RoomMemberType.non_existent)
+            return;
+
+        const owner = server.db.get_room_owner(room_name);
+        if (target_username != username) {
+            if (owner != username
+                    && server.db.get_room_member_type(
+                       room_name, username) != RoomMemberType.operator)
+                return;
+
+            if (owner == target_username
+                    || target_member_type == RoomMemberType.operator)
+                return;
+        }
+
+        server.db.del_room_member(room_name, target_username);
+
+        const members = server.db.room_members!(RoomMemberType.any)(room_name);
+        foreach (ref room_username ; members ~ [owner]) {
+            auto room_user = server.get_user(room_username);
+            if (room_user is null)
+                continue;
+
+            scope msg = new SPrivateRoomRemoveUser(room_name, target_username);
+            room_user.send_message(msg);
+        }
+
+        server.send_pm(
+            server_username, owner,
+            text(
+                "User ", target_username,
+                " is no longer a member of room ", room_name
+            )
+        );
+
+        auto user = server.get_user(target_username);
+        if (user !is null) {
+            enum permanent = true;
+            user.leave_room(room_name, permanent);
+        }
     }
 
     string[] joined_room_names(RoomType type)()

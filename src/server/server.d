@@ -10,8 +10,8 @@ import soulfind.db : Sdb;
 import soulfind.defines : blue, kick_duration, log_msg, log_user,
                           max_chat_message_length, max_global_recommendations,
                           max_search_query_length, max_user_recommendations,
-                          norm, red, RoomType, SearchFilterType,
-                          server_username;
+                          norm, red, RoomMemberType, RoomType,
+                          SearchFilterType, server_username;
 import soulfind.server.cmdhandler : CommandHandler;
 import soulfind.server.conns : Logging, UserConnection, UserConnections;
 import soulfind.server.messages;
@@ -393,16 +393,15 @@ final class Server
         return room;
     }
 
-    void del_room(string room_name)
+    void del_room(string room_name, bool permanent = false)
     {
         Room room;  // Satisfy linter
         room = get_room(room_name);
         if (room is null)
             return;
 
-        if (room.type == RoomType._public && room.num_tickers == 0)
-            db.del_room(room_name);
-
+        room.disband();
+        if (permanent) db.del_room(room_name);
         rooms.remove(room_name);
     }
 
@@ -460,25 +459,39 @@ final class Server
             return;
 
         auto owned_rooms = room_stats!(RoomType._private)(username);
+        auto member_rooms = room_stats!(RoomType._private)(
+            null, username
+        );
+        auto operated_rooms = db.rooms!(RoomType._private)(
+            null, null, username
+        );
         scope list_response_msg = new SRoomList(
             room_stats!(RoomType._public),
             owned_rooms,
-            null,
-            null
+            member_rooms,
+            operated_rooms
         );
         user.send_message(list_response_msg);
 
-        foreach (ref room_name, _users ; owned_rooms) {
-            scope users_response_msg = new SPrivateRoomUsers(room_name, null);
-            user.send_message(users_response_msg);
-        }
-
-        foreach (ref room_name, _users ; owned_rooms) {
-            scope operators_response_msg = new SPrivateRoomOperators(
-                room_name, null
+        void send_users_msg(string room_name) {
+            scope users_msg = new SPrivateRoomUsers(
+                room_name,
+                db.room_members!(RoomMemberType.normal)(room_name)
             );
-            user.send_message(operators_response_msg);
+            user.send_message(users_msg);
         }
+        foreach (ref name, _users ; owned_rooms)  send_users_msg(name);
+        foreach (ref name, _users ; member_rooms) send_users_msg(name);
+
+        void send_operators_msg(string room_name) {
+            scope operators_msg = new SPrivateRoomOperators(
+                room_name,
+                db.room_members!(RoomMemberType.operator)(room_name)
+            );
+            user.send_message(operators_msg);
+        }
+        foreach (ref name, _users ; owned_rooms)  send_operators_msg(name);
+        foreach (ref name, _users ; member_rooms) send_operators_msg(name);
     }
 
     void send_to_joined_rooms(string sender_username, scope SMessage msg)
@@ -492,12 +505,13 @@ final class Server
                 user.send_message!(Logging.disabled)(msg);
     }
 
-    private uint[string] room_stats(RoomType type)(string owner = null)
+    private uint[string] room_stats(RoomType type)(string owner = null,
+                                                   string member = null)
     {
         Room room;
         uint[string] stats;
 
-        foreach (ref room_name ; db.rooms!type(owner)) {
+        foreach (ref room_name ; db.rooms!type(owner, member)) {
             uint num_users;
             room = get_room(room_name);
 
