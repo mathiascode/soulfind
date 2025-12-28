@@ -50,6 +50,7 @@ extern (C) {
     int sqlite3_shutdown();
     int sqlite3_config(int, ...);
     int sqlite3_db_config(sqlite3*, int op, ...);
+    int sqlite3_changes(sqlite3*);
 
     int sqlite3_open(const(char)*filename, sqlite3 **ppDb);
     int sqlite3_close(sqlite3 *);
@@ -870,27 +871,6 @@ final class Database
         return RoomType.non_existent;
     }
 
-    string get_room_owner(string room_name)
-    {
-        enum sql = text(
-            "SELECT owner FROM ", rooms_table, " WHERE room = ? AND type = ?;"
-        );
-        const res = query(sql, [room_name, text(cast(int) RoomType._private)]);
-        return res.length > 0 ? res[0][0] : null;
-    }
-
-    bool is_room_member(string room_name, string username)
-    {
-        enum sql = text(
-            "SELECT 1 FROM ", rooms_table, " WHERE room = ? AND owner = ?",
-            " UNION ALL ",
-            "SELECT 1 FROM ", room_members_table,
-            " WHERE room = ? AND username = ?"
-        );
-        const res = query(sql, [room_name, username, room_name, username]);
-        return res.length > 0;
-    }
-
     string[] rooms(string owner = null,
                    string member = null,
                    RoomMemberType member_type = RoomMemberType.any)
@@ -925,26 +905,70 @@ final class Database
         return rooms[];
     }
 
-    void add_room_member(RoomMemberType type)(string room_name,
-                                              string username)
+    bool add_room_member(string room_name, string username)
     {
-        if (type < 0)
-            return;
-
         enum sql = text(
-            "REPLACE INTO ", room_members_table,
+            "INSERT OR IGNORE INTO ", room_members_table,
             "(room, username, type) VALUES(?, ?, ?);"
         );
-        query(sql, [room_name, username, text(cast(int) type)]);
+        const type = text(cast(int) RoomMemberType.normal);
+        query(sql, [room_name, username, type]);
+        return changes() > 0;
     }
 
-    void del_room_member(string room_name, string username)
+    bool del_room_member(string room_name, string username)
     {
         enum sql = text(
             "DELETE FROM ", room_members_table,
+            " WHERE room = ? AND username = ? AND type != ?;"
+        );
+        const type = text(cast(int) RoomMemberType.operator);
+        query(sql, [room_name, username, type]);
+        return changes() > 0;
+    }
+
+    bool add_room_operator(string room_name, string username)
+    {
+        enum sql = text(
+            "UPDATE ", room_members_table, " SET type = ?",
             " WHERE room = ? AND username = ?;"
         );
-        query(sql, [room_name, username]);
+        const type = text(cast(int) RoomMemberType.operator);
+        query(sql, [type, room_name, username]);
+        return changes() > 0;
+    }
+
+    bool del_room_operator(string room_name, string username)
+    {
+        enum sql = text(
+            "UPDATE ", room_members_table, " SET type = ?",
+            " WHERE room = ? AND username = ? AND type = ?;"
+        );
+        const new_type = text(cast(int) RoomMemberType.normal);
+        const old_type = text(cast(int) RoomMemberType.operator);
+        query(sql, [new_type, room_name, username, old_type]);
+        return changes() > 0;
+    }
+
+    bool can_access_room(string room_name, string username)
+    {
+        enum sql = text(
+            "SELECT 1 FROM ", rooms_table, " WHERE room = ? AND owner = ?",
+            " UNION ALL ",
+            "SELECT 1 FROM ", room_members_table,
+            " WHERE room = ? AND username = ?"
+        );
+        const res = query(sql, [room_name, username, room_name, username]);
+        return res.length > 0;
+    }
+
+    string get_room_owner(string room_name)
+    {
+        enum sql = text(
+            "SELECT owner FROM ", rooms_table, " WHERE room = ? AND type = ?;"
+        );
+        const res = query(sql, [room_name, text(cast(int) RoomType._private)]);
+        return res.length > 0 ? res[0][0] : null;
     }
 
     RoomMemberType get_room_member_type(string room_name, string username)
@@ -1208,6 +1232,12 @@ final class Database
             // Windows and macOS versions may lack newer options. Other
             // operations will proceed as usual.
             return;
+    }
+
+    @trusted
+    private int changes()
+    {
+        return sqlite3_changes(db);
     }
 
     @trusted
