@@ -11,12 +11,12 @@ import soulfind.defines : blue, default_max_users, default_motd, default_port,
                           RoomMemberType, RoomTicker, RoomType,
                           SearchFilterType, UserStats;
 import std.array : Appender;
-import std.conv : ConvException, text, to;
-import std.datetime : Clock, days, Duration, SysTime, UTC;
+import std.conv : text;
+import std.datetime : Clock, Duration, SysTime, UTC;
 import std.file : exists, remove, rename;
 import std.path : absolutePath, buildNormalizedPath;
 import std.stdio : writeln;
-import std.string : fromStringz, join, replace, toStringz;
+import std.string : fromStringz, join, toStringz;
 
 extern (C) {
     // Manual definitions due to etc.c.sqlite3 bindings being out of date, or
@@ -45,6 +45,14 @@ extern (C) {
         SQLITE_DBCONFIG_TRUSTED_SCHEMA  = 1017
     }
 
+    enum
+    {
+        SQLITE_INTEGER  = 1,
+        SQLITE_FLOAT    = 2,
+        SQLITE3_TEXT    = 3,
+        SQLITE_NULL     = 5
+    }
+
     struct sqlite3;
     int sqlite3_initialize();
     int sqlite3_shutdown();
@@ -63,14 +71,73 @@ extern (C) {
         sqlite3 *db, const(char)*zSql, int nByte, sqlite3_stmt **ppStmt,
         const(char*)*pzTail
     );
+    int sqlite3_bind_double(sqlite3_stmt*, int, double);
+    int sqlite3_bind_int64(sqlite3_stmt*, int, long);
     int sqlite3_bind_null(sqlite3_stmt*, int);
     int sqlite3_bind_text(
         sqlite3_stmt*, int, const char*, int n, void function (void*)
     );
     int sqlite3_column_count(sqlite3_stmt *pStmt);
     int sqlite3_step(sqlite3_stmt*);
+    double sqlite3_column_double(sqlite3_stmt*, int iCol);
+    long sqlite3_column_int64(sqlite3_stmt*, int iCol);
     const (char)* sqlite3_column_text(sqlite3_stmt*, int iCol);
+    int sqlite3_column_type(sqlite3_stmt*, int iCol);
     int sqlite3_finalize(sqlite3_stmt *pStmt);
+}
+
+struct Parameter
+{
+    long    i;
+    double  d;
+    string  s;
+    int     type = SQLITE_NULL;
+
+    @disable this();
+
+    this(long parameter)
+    {
+        i = parameter;
+        type = SQLITE_INTEGER;
+    }
+
+    this(double parameter)
+    {
+        d = parameter;
+        type = SQLITE_FLOAT;
+    }
+
+    this(string parameter)
+    {
+        if (parameter is null)
+            return;
+
+        s = parameter;
+        type = SQLITE3_TEXT;
+    }
+
+    string print()
+    {
+        if (type == SQLITE_INTEGER)
+            return i.text;
+        if (type == SQLITE_FLOAT)
+            return text(cast(long) d);
+        return s;
+    }
+}
+
+struct Value
+{
+    long    i;
+    double  d;
+    string  s;
+}
+
+final class DatabaseException : Exception
+{
+    this(string msg, string file = __FILE__, size_t line = __LINE__) {
+        super(msg, file, line);
+    }
 }
 
 enum users_table           = "users";
@@ -80,13 +147,6 @@ enum room_members_table    = "room_members";
 enum tickers_table         = "tickers";
 enum search_filters_table  = "search_filters";
 enum search_query_table    = "temp.search_query";
-
-final class DatabaseException : Exception
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) {
-        super(msg, file, line);
-    }
-}
 
 final class Database
 {
@@ -122,6 +182,13 @@ final class Database
         query("PRAGMA wal_autocheckpoint = 5000;");
 
         if (log_db) check_integrity();
+
+        enum config_table_sql = text(
+            "CREATE TABLE IF NOT EXISTS ", config_table,
+            "(option TEXT PRIMARY KEY,",
+            " value",
+            ") WITHOUT ROWID;"
+        );
 
         enum users_table_sql = text(
             "CREATE TABLE IF NOT EXISTS ", users_table,
@@ -196,6 +263,7 @@ final class Database
             " ON ", rooms_table, "(owner, type);"
         );
 
+        query(config_table_sql);
         query(users_table_sql);
         query(rooms_table_sql);
         query(room_members_sql);
@@ -226,16 +294,21 @@ final class Database
         writeln("[DB] Checking database integrity");
 
         foreach (ref record ; query("PRAGMA integrity_check;")) {
-            const result = record[0];
+            const result = record[0].s;
             if (result == "ok")
                 continue;
 
+            writeln("[DB] Integrity violation detected: ", result);
             integrity_success = false;
-            writeln("[DB] Integrity issue detected: ", result);
         }
         foreach (ref record ; query("PRAGMA foreign_key_check;")) {
+            const table_name = record[0].s, target_name = record[2].s;
+            const row_id = record[1].i, key_idx = record[3].i;
+            writeln(
+                "[DB] Foreign key violation detected: ",
+                table_name, ", ", row_id, ", ", target_name, ", ", key_idx
+            );
             integrity_success = false;
-            writeln("[DB] Foreign key issue detected: ", record.join(", "));
         }
 
         if (integrity_success) writeln("[DB] Database integrity verified");
@@ -256,12 +329,12 @@ final class Database
             if (column.length < 1)
                 continue;
 
-            if (column[1] == "admin") {
+            if (column[1].s == "admin") {
                 has_admin = true;
                 continue;
             }
 
-            if (column[1] == "unsearchable") {
+            if (column[1].s == "unsearchable") {
                 has_unsearchable = true;
                 continue;
             }
@@ -299,7 +372,7 @@ final class Database
 
         try {
             if (exists(tmp_filename)) remove(tmp_filename);
-            query(sql, [tmp_filename]);
+            query(sql, [Parameter(tmp_filename)]);
             rename(tmp_filename, normalized_filename);
 
             writeln("Database backed up to ", normalized_filename);
@@ -319,116 +392,117 @@ final class Database
 
     private void init_config()
     {
-        enum sql = text(
-            "CREATE TABLE IF NOT EXISTS ", config_table,
-            "(option TEXT PRIMARY KEY,",
-            " value",
-            ") WITHOUT ROWID;"
-        );
-        query(sql);
-
-        if (get_config_value("port") is null)
-            set_server_port(default_port);
-
-        if (get_config_value("max_users") is null)
-            set_server_max_users(default_max_users);
-
-        if (get_config_value("private_mode") is null)
-            set_server_private_mode(default_private_mode);
-
-        if (get_config_value("motd") is null)
-            set_server_motd(default_motd);
+        add_config_option("port",          Parameter(default_port));
+        add_config_option("max_users",     Parameter(default_max_users));
+        add_config_option("private_mode",  Parameter(default_private_mode));
+        add_config_option("motd",          Parameter(default_motd));
     }
 
-    private string get_config_value(string option)
+    private bool add_config_option(string option, Parameter value)
     {
         enum sql = text(
-            "SELECT value FROM ", config_table, " WHERE option = ?;"
+            "INSERT OR IGNORE INTO ", config_table, "(option, value)",
+            " VALUES(?, ?);"
         );
-        const res = query(sql, [option]);
-        string value;
+        query(sql, [Parameter(option), value]);
 
-        if (res.length > 0)
-            value = res[0][0];
+        if (changes() == 0)
+            return false;
 
-        return value;
+        if (log_db) writeln(
+            "[DB] Added config option ", option, " with value ", value.print
+        );
+        return true;
     }
 
-    private void set_config_value(string option, string value)
+    private void set_config_value(string option, Parameter value)
     {
         enum sql = text(
             "INSERT INTO ", config_table, "(option, value) VALUES(?, ?)",
             " ON CONFLICT(option) DO UPDATE SET value = excluded.value;"
         );
-        query(sql, [option, value]);
+        query(sql, [Parameter(option), value]);
 
         if (log_db) writeln(
-            "[DB] Updated config value ", option, " to ", value
+            "[DB] Updated config value ", option, " to ", value.print
         );
     }
 
     ushort server_port()
     {
-        ushort port = default_port;
-        const config_value = get_config_value("port");
+        enum sql = text(
+            "SELECT value FROM ", config_table,
+            " WHERE option = 'port' AND CAST(value AS INTEGER) > 0;"
+        );
+        const res = query(sql);
 
-        if (config_value !is null)
-            try port = config_value.to!ushort; catch (ConvException) {}
+        if (res.length > 0)
+            return cast(ushort) res[0][0].i;
 
-        return port;
+        return default_port;
     }
 
     void set_server_port(ushort port)
     {
-        set_config_value("port", port.text);
+        set_config_value("port", Parameter(port));
     }
 
-    uint server_max_users()
+    long server_max_users()
     {
-        uint max_users = default_max_users;
-        const config_value = get_config_value("max_users");
+        enum sql = text(
+            "SELECT CAST(value AS INTEGER) FROM ", config_table,
+            " WHERE option = 'max_users';"
+        );
+        const res = query(sql);
 
-        if (config_value !is null)
-            try max_users = config_value.to!uint; catch (ConvException) {}
-
-        return max_users;
+        if (res.length > 0) {
+            const value = res[0][0].i;
+            return value > 0 ? value : 0;
+        }
+        return default_max_users;
     }
 
     void set_server_max_users(uint num_users)
     {
-        set_config_value("max_users", num_users.text);
+        set_config_value("max_users", Parameter(num_users));
     }
 
     bool server_private_mode()
     {
-        bool private_mode = default_private_mode;
-        const config_value = get_config_value("private_mode");
+        enum sql = text(
+            "SELECT CAST(value AS INTEGER) FROM ", config_table,
+            " WHERE option = 'private_mode';"
+        );
+        const res = query(sql);
 
-        if (config_value == "0")       private_mode = false;
-        else if (config_value == "1")  private_mode = true;
+        if (res.length > 0)
+            return res[0][0].i == 1;
 
-        return private_mode;
+        return default_private_mode;
     }
 
     void set_server_private_mode(bool private_mode)
     {
-        set_config_value("private_mode", private_mode ? "1" : "0");
+        set_config_value("private_mode", Parameter(private_mode));
     }
 
     string server_motd()
     {
-        string motd = default_motd;
-        const config_value = get_config_value("motd");
+        enum sql = text(
+            "SELECT CAST(value AS TEXT) FROM ", config_table,
+            " WHERE option = 'motd';"
+        );
+        const res = query(sql);
 
-        if (config_value !is null)
-            motd = config_value;
+        if (res.length > 0)
+            return res[0][0].s;
 
-        return motd;
+        return default_motd;
     }
 
     void set_server_motd(string motd)
     {
-        set_config_value("motd", motd);
+        set_config_value("motd", Parameter(motd));
     }
 
 
@@ -440,7 +514,7 @@ final class Database
             "INSERT OR IGNORE INTO ",
             search_filters_table, "(type, phrase) VALUES(?, ?);"
         );
-        query(sql, [text(cast(uint) type), phrase]);
+        query(sql, [Parameter(type), Parameter(phrase)]);
 
         if (log_db) writeln(
             "[DB] Filtered search phrase ", phrase, " ",
@@ -455,7 +529,7 @@ final class Database
             "DELETE FROM ", search_filters_table,
             " WHERE type = ? AND phrase = ?;"
         );
-        query(sql, [text(cast(uint) type), phrase]);
+        query(sql, [Parameter(type), Parameter(phrase)]);
 
         if (changes() == 0)
             return false;
@@ -473,7 +547,7 @@ final class Database
             "UPDATE ", users_table, " SET unsearchable = 1",
             " WHERE username = ?;"
         );
-        query(sql, [username]);
+        query(sql, [Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -490,7 +564,7 @@ final class Database
             "UPDATE ", users_table, " SET unsearchable = null",
             " WHERE username = ? AND CAST(unsearchable AS INTEGER) > 0;"
         );
-        query(sql, [username]);
+        query(sql, [Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -508,8 +582,8 @@ final class Database
         );
 
         Appender!(string[]) phrases;
-        foreach (record ; query(sql, [text(cast(uint) type)]))
-            phrases ~= record[0];
+        foreach (record ; query(sql, [Parameter(type)]))
+            phrases ~= record[0].s;
 
         return phrases[];
     }
@@ -519,7 +593,7 @@ final class Database
         enum sql = text(
             "SELECT COUNT(1) FROM ", search_filters_table, " WHERE type = ?;"
         );
-        return query(sql, [(cast(uint) type).text])[0][0].to!size_t;
+        return cast(size_t) query(sql, [Parameter(type)])[0][0].i;
     }
 
     bool is_search_query_filtered(string search_query)
@@ -547,8 +621,8 @@ final class Database
             " );"
         );
 
-        query(insert_sql, [search_query]);
-        return query(query_sql, [text(cast(uint) SearchFilterType.server)])
+        query(insert_sql, [Parameter(search_query)]);
+        return query(query_sql, [Parameter(SearchFilterType.server)])
             .length > 0;
     }
 
@@ -558,7 +632,7 @@ final class Database
             "SELECT 1 FROM ", users_table,
             " WHERE username = ? AND unsearchable = 1;"
         );
-        const res = query(sql, [username]);
+        const res = query(sql, [Parameter(username)]);
         return res.length > 0;
     }
 
@@ -571,7 +645,7 @@ final class Database
             "INSERT OR IGNORE INTO ", users_table, "(username, password)",
             " VALUES(?, ?);"
         );
-        query(sql, [username, hash]);
+        query(sql, [Parameter(username), Parameter(hash)]);
 
         if (changes() == 0)
             return false;
@@ -584,7 +658,7 @@ final class Database
     bool del_user(string username)
     {
         enum sql = text("DELETE FROM ", users_table, " WHERE username = ?;");
-        query(sql, [username]);
+        query(sql, [Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -598,7 +672,7 @@ final class Database
         enum sql = text(
             "SELECT password FROM ", users_table, " WHERE username = ?;"
         );
-        return query(sql, [username])[0][0];
+        return query(sql, [Parameter(username)])[0][0].s;
     }
 
     bool update_user_password(string username, string hash)
@@ -606,7 +680,7 @@ final class Database
         enum sql = text(
             "UPDATE ", users_table, " SET password = ? WHERE username = ?;"
         );
-        query(sql, [hash, username]);
+        query(sql, [Parameter(hash), Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -622,7 +696,7 @@ final class Database
         enum sql = text(
             "SELECT 1 FROM ", users_table, " WHERE username = ?;"
         );
-        return query(sql, [username]).length > 0;
+        return query(sql, [Parameter(username)]).length > 0;
     }
 
     bool add_admin(string username, Duration duration)
@@ -638,7 +712,7 @@ final class Database
             admin_until = (
                 Clock.currTime.toUnixTime + duration.total!"seconds");
 
-        query(sql, [admin_until.text, username]);
+        query(sql, [Parameter(admin_until), Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -653,7 +727,7 @@ final class Database
             "UPDATE ", users_table, " SET admin = null",
             " WHERE username = ? AND CAST(admin AS INTEGER) > 0;"
         );
-        query(sql, [username]);
+        query(sql, [Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -665,15 +739,12 @@ final class Database
     SysTime admin_until(string username)
     {
         enum sql = text(
-            "SELECT admin FROM ", users_table, " WHERE username = ?;"
+            "SELECT CAST(admin AS INTEGER) FROM ", users_table,
+            " WHERE username = ?;"
         );
-        const res = query(sql, [username]);
+        const res = query(sql, [Parameter(username)]);
         long admin_until;
-
-        if (res.length > 0) {
-            try admin_until = res[0][0].to!long;
-            catch (ConvException) {}
-        }
+        if (res.length > 0) admin_until = res[0][0].i;
 
         if (admin_until == 0)
             return SysTime();
@@ -693,9 +764,11 @@ final class Database
             " END + ?",
             " WHERE username = ?;"
         );
-        const now = Clock.currTime.toUnixTime.text;
-        const seconds = duration.total!"seconds".text;
-        query(sql, [now, now, seconds, username]);
+        const now_param = Parameter(Clock.currTime.toUnixTime);
+        const seconds_param = Parameter(duration.total!"seconds");
+        query(
+            sql, [now_param, now_param, seconds_param, Parameter(username)]
+        );
 
         if (changes() == 0)
             return false;
@@ -715,9 +788,14 @@ final class Database
             " END ",
             " WHERE username = ? AND CAST(privileges AS INTEGER) > ?;"
         );
-        const now = Clock.currTime.toUnixTime.text;
-        const seconds = duration.total!"seconds".text;
-        query(sql, [now, seconds, seconds, now, username, now]);
+        const now_param = Parameter(Clock.currTime.toUnixTime);
+        const seconds_param = Parameter(duration.total!"seconds");
+        query(
+            sql, [
+                now_param, seconds_param, seconds_param, now_param,
+                Parameter(username), now_param
+            ]
+        );
 
         if (changes() == 0)
             return false;
@@ -740,15 +818,12 @@ final class Database
     SysTime user_privileged_until(string username)
     {
         enum sql = text(
-            "SELECT privileges FROM ", users_table, " WHERE username = ?;"
+            "SELECT CAST(privileges AS INTEGER) FROM ", users_table,
+            " WHERE username = ?;"
         );
-        const res = query(sql, [username]);
+        const res = query(sql, [Parameter(username)]);
         long privileged_until;
-
-        if (res.length > 0) {
-            try privileged_until = res[0][0].to!long;
-            catch (ConvException) {}
-        }
+        if (res.length > 0) privileged_until = res[0][0].i;
 
         if (privileged_until == 0)
             return SysTime();
@@ -772,7 +847,7 @@ final class Database
             banned_until = (
                 Clock.currTime.toUnixTime + duration.total!"seconds");
 
-        query(sql, [banned_until.text, username]);
+        query(sql, [Parameter(banned_until), Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -787,7 +862,7 @@ final class Database
             "UPDATE ", users_table, " SET banned = null",
             " WHERE username = ? AND CAST(banned AS INTEGER) > 0;"
         );
-        query(sql, [username]);
+        query(sql, [Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -799,15 +874,12 @@ final class Database
     SysTime user_banned_until(string username)
     {
         enum sql = text(
-            "SELECT banned FROM ", users_table, " WHERE username = ?;"
+            "SELECT CAST(banned AS INTEGER) FROM ", users_table,
+            " WHERE username = ?;"
         );
-        const res = query(sql, [username]);
+        const res = query(sql, [Parameter(username)]);
         long banned_until;
-
-        if (res.length > 0) {
-            try banned_until = res[0][0].to!long;
-            catch (ConvException) {}
-        }
+        if (res.length > 0) banned_until = res[0][0].i;
 
         if (banned_until == 0)
             return SysTime();
@@ -821,25 +893,23 @@ final class Database
     UserStats user_stats(string username)
     {
         enum sql = text(
-            "SELECT speed,files,folders",
+            "SELECT",
+            "  CAST(speed AS INTEGER) as speed,",
+            "  CAST(files AS INTEGER) as files,",
+            "  CAST(folders AS INTEGER) as folders",
             " FROM ", users_table,
             " WHERE username = ?;"
         );
-        const res = query(sql, [username]);
-        auto user_stats = UserStats();
+        const res = query(sql, [Parameter(username)]);
+        UserStats user_stats;
 
         if (res.length > 0) {
-            const record                   = res[0];
-            user_stats.exists              = true;
+            const record               = res[0];
+            user_stats.exists          = true;
 
-            try user_stats.upload_speed    = record[0].to!uint;
-            catch (ConvException) {}
-
-            try user_stats.shared_files    = record[1].to!uint;
-            catch (ConvException) {}
-
-            try user_stats.shared_folders  = record[2].to!uint;
-            catch (ConvException) {}
+            user_stats.upload_speed    = cast(uint) record[0].i;
+            user_stats.shared_files    = cast(uint) record[1].i;
+            user_stats.shared_folders  = cast(uint) record[2].i;
         }
         return user_stats;
     }
@@ -847,22 +917,31 @@ final class Database
     bool user_update_stats(string username, UserStats stats)
     {
         Appender!(string[]) fields;
-        Appender!(string[]) parameters;
+        Appender!(Parameter[]) parameters;
 
         if (stats.updating_speed) {
             const upload_speed = stats.upload_speed;
-            fields ~= "speed = ?";
-            parameters ~= upload_speed > 0 ? upload_speed.text : null;
+            if (upload_speed > 0) {
+                fields ~= "speed = ?";
+                parameters ~= Parameter(upload_speed);
+            }
+            else fields ~= "speed = null";
         }
 
         if (stats.updating_shared) {
             const shared_files = stats.shared_files;
-            fields ~= "files = ?";
-            parameters ~= shared_files > 0 ? shared_files.text : null;
+            if (shared_files > 0) {
+                fields ~= "files = ?";
+                parameters ~= Parameter(shared_files);
+            }
+            else fields ~= "files = null";
 
             const shared_folders = stats.shared_folders;
-            fields ~= "folders = ?";
-            parameters ~= shared_folders > 0 ? shared_folders.text : null;
+            if (shared_folders > 0) {
+                fields ~= "folders = ?";
+                parameters ~= Parameter(shared_folders);
+            }
+            else fields ~= "folders = null";
         }
 
         if (fields[].length == 0)
@@ -873,7 +952,7 @@ final class Database
             " SET ", fields[].join(", "),
             " WHERE username = ?;"
         );
-        parameters ~= username;
+        parameters ~= Parameter(username);
         query(sql, parameters[]);
 
         if (changes() == 0)
@@ -885,33 +964,38 @@ final class Database
         return true;
     }
 
-    string[] usernames(string field = null, ulong min = 1,
-                       ulong max = ulong.max)
+    string[] usernames(string field = null, long min = 1, long max = long.max)
     {
-        Appender!(string[]) usernames;
-        auto sql = text("SELECT username FROM ", users_table);
-        string[] parameters;
+        Appender!string sql;
+        Appender!(Parameter[]) parameters;
 
+        sql ~= text("SELECT username FROM ", users_table);
         if (field) {
             sql ~= text(" WHERE ", field, " BETWEEN ? AND ?");
-            parameters = [min.text, max.text];
+            parameters ~= [Parameter(min), Parameter(max)];
         }
         sql ~= ";";
-        foreach (ref record ; query(sql, parameters)) usernames ~= record[0];
+
+        Appender!(string[]) usernames;
+        foreach (ref record ; query(sql[], parameters[]))
+            usernames ~= record[0].s;
+
         return usernames[];
     }
 
-    size_t num_users(string field = null, ulong min = 1, ulong max = ulong.max)
+    size_t num_users(string field = null, long min = 1, long max = long.max)
     {
-        auto sql = text("SELECT COUNT(1) FROM ", users_table);
-        string[] parameters;
+        Appender!string sql;
+        Appender!(Parameter[]) parameters;
 
+        sql ~= text("SELECT COUNT(1) FROM ", users_table);
         if (field) {
             sql ~= text(" WHERE ", field, " BETWEEN ? AND ?");
-            parameters = [min.text, max.text];
+            parameters ~= [Parameter(min), Parameter(max)];
         }
         sql ~= ";";
-        return query(sql, parameters)[0][0].to!size_t;
+
+        return cast(size_t) query(sql[], parameters[])[0][0].i;
     }
 
 
@@ -924,7 +1008,7 @@ final class Database
             "(room, type, owner) VALUES(?, ?, ?);"
         );
         const type = (owner !is null) ? RoomType._private : RoomType._public;
-        query(sql, [room_name, text(cast(int) type), owner]);
+        query(sql, [Parameter(room_name), Parameter(type), Parameter(owner)]);
 
         if (changes() == 0)
             return false;
@@ -945,7 +1029,7 @@ final class Database
             "  )",
             " );"
         );
-        query(sql, [room_name, text(cast(int) RoomType._public)]);
+        query(sql, [Parameter(room_name), Parameter(RoomType._public)]);
 
         if (changes() == 0)
             return false;
@@ -959,9 +1043,9 @@ final class Database
         enum sql = text(
             "SELECT type FROM ", rooms_table, " WHERE room = ?;"
         );
-        const res = query(sql, [room_name]);
+        const res = query(sql, [Parameter(room_name)]);
         if (res.length > 0)
-            return cast(RoomType) res[0][0].to!int;
+            return cast(RoomType) res[0][0].i;
         return RoomType.non_existent;
     }
 
@@ -970,8 +1054,10 @@ final class Database
         enum sql = text(
             "SELECT owner FROM ", rooms_table, " WHERE room = ? AND type = ?;"
         );
-        const res = query(sql, [room_name, text(cast(int) RoomType._private)]);
-        return res.length > 0 ? res[0][0] : null;
+        const res = query(
+            sql, [Parameter(room_name), Parameter(RoomType._private)]
+        );
+        return res.length > 0 ? res[0][0].s : null;
     }
 
     bool is_room_member(string room_name, string username)
@@ -982,7 +1068,11 @@ final class Database
             "SELECT 1 FROM ", room_members_table,
             " WHERE room = ? AND username = ?;"
         );
-        const res = query(sql, [room_name, username, room_name, username]);
+        const room_param = Parameter(room_name);
+        const user_param = Parameter(username);
+        const res = query(
+            sql, [room_param, user_param, room_param, user_param]
+        );
         return res.length > 0;
     }
 
@@ -990,33 +1080,35 @@ final class Database
                    string member = null,
                    RoomMemberType member_type = RoomMemberType.any)
     {
-        Appender!(string[]) rooms;
-        auto sql = text("SELECT r.room FROM ", rooms_table, " r");
-        string[] parameters;
+        Appender!string sql;
+        Appender!(Parameter[]) parameters;
+
+        sql ~= text("SELECT r.room FROM ", rooms_table, " r");
 
         if (owner !is null) {
             sql ~= text(" WHERE r.type = ? AND r.owner = ?");
-            parameters ~= [text(cast(uint) RoomType._private), owner];
+            parameters ~= [Parameter(RoomType._private), Parameter(owner)];
         }
         else if (member !is null) {
             sql ~= text(
                 " JOIN ", room_members_table, " m ON r.room = m.room",
                 " WHERE r.type = ? AND m.username = ?"
             );
-            parameters ~= [text(cast(uint) RoomType._private), member];
+            parameters ~= [Parameter(RoomType._private), Parameter(member)];
 
             if (member_type != RoomMemberType.any) {
                 sql ~= " AND m.type = ?";
-                parameters ~= [text(cast(uint) member_type)];
+                parameters ~= Parameter(member_type);
             }
         }
         else {
             sql ~= text(" WHERE r.type = ?");
-            parameters ~= [text(cast(uint) RoomType._public)];
+            parameters ~= Parameter(RoomType._public);
         }
         sql ~= ";";
 
-        foreach (record ; query(sql, parameters)) rooms ~= record[0];
+        Appender!(string[]) rooms;
+        foreach (record ; query(sql[], parameters[])) rooms ~= record[0].s;
         return rooms[];
     }
 
@@ -1030,7 +1122,9 @@ final class Database
             "REPLACE INTO ", room_members_table,
             "(room, username, type) VALUES(?, ?, ?);"
         );
-        query(sql, [room_name, username, text(cast(int) type)]);
+        query(
+            sql, [Parameter(room_name), Parameter(username), Parameter(type)]
+        );
     }
 
     void del_room_member(string room_name, string username)
@@ -1039,7 +1133,7 @@ final class Database
             "DELETE FROM ", room_members_table,
             " WHERE room = ? AND username = ?;"
         );
-        query(sql, [room_name, username]);
+        query(sql, [Parameter(room_name), Parameter(username)]);
     }
 
     RoomMemberType get_room_member_type(string room_name, string username)
@@ -1049,34 +1143,39 @@ final class Database
             " JOIN ", rooms_table, " r ON m.room = r.room",
             " WHERE r.room = ? AND r.type = ? AND m.username = ?;"
         );
-        const res = query(sql, [
-            room_name,
-            text(cast(int) RoomType._private),
-            username
-        ]);
+        const res = query(
+            sql, [
+                Parameter(room_name), Parameter(RoomType._private),
+                Parameter(username)
+            ]
+        );
         if (res.length > 0)
-            return cast(RoomMemberType) res[0][0].to!int;
+            return cast(RoomMemberType) res[0][0].i;
         return RoomMemberType.non_existent;
     }
 
     string[] room_members(RoomMemberType type)(string room_name)
     {
-        Appender!(string[]) members;
-        auto sql = text(
+        Appender!string sql;
+        Appender!(Parameter[]) parameters;
+
+        sql ~= text(
             "SELECT m.username FROM ", room_members_table, " m",
             " JOIN ", rooms_table, " r ON m.room = r.room",
             " WHERE r.room = ? AND r.type = ?"
         );
-        auto parameters = [room_name, text(cast(int) RoomType._private)];
+        parameters ~= [Parameter(room_name), Parameter(RoomType._private)];
 
         if (type != RoomMemberType.any) {
             sql ~= " AND m.type = ?";
-            parameters ~= [text(cast(int) type)];
+            parameters ~= Parameter(type);
         }
         sql ~= ";";
 
-        const res = query(sql, parameters);
-        foreach (ref record ; res) members ~= record[0];
+        Appender!(string[]) members;
+        foreach (ref record ; query(sql[], parameters[]))
+            members ~= record[0].s;
+
         return members[];
     }
 
@@ -1090,12 +1189,16 @@ final class Database
             "REPLACE INTO ", tickers_table,
             "(room, username, content) VALUES(?, ?, ?);"
         );
-        const res = query(check_sql, [room_name, username, content]);
+        const room_param = Parameter(room_name);
+        const user_param = Parameter(username);
+        const res = query(
+            check_sql, [room_param, user_param, Parameter(content)]
+        );
 
         if (res.length > 0)
             return false;
 
-        query(add_sql, [room_name, username, content]);
+        query(add_sql, [room_param, user_param, Parameter(content)]);
         if (log_db) writeln(
             "[DB] Added user ", blue, username, norm, "'s ticker to room ",
             blue, room_name, norm
@@ -1108,7 +1211,7 @@ final class Database
         enum sql = text(
             "DELETE FROM ", tickers_table, " WHERE room = ? AND username = ?;"
         );
-        query(sql, [room_name, username]);
+        query(sql, [Parameter(room_name), Parameter(username)]);
 
         if (changes() == 0)
             return false;
@@ -1122,21 +1225,24 @@ final class Database
 
     bool del_user_tickers(RoomType type)(string username)
     {
-        auto sql = text(
+        Appender!string sql;
+        Appender!(Parameter[]) parameters;
+
+        sql ~= text(
             "DELETE FROM ", tickers_table, " WHERE rowid IN (",
             " SELECT t.rowid FROM ", tickers_table, " t",
             " JOIN ", rooms_table, " r ON t.room = r.room",
             " WHERE t.username = ?"
         );
-        auto parameters = [username];
+        parameters ~= Parameter(username);
 
         if (type != RoomType.any) {
             sql ~= " AND r.type = ?";
-            parameters ~= [text(cast(int) type)];
+            parameters ~= Parameter(type);
         }
         sql ~= ");";
 
-        query(sql, parameters);
+        query(sql[], parameters[]);
 
         if (changes() == 0)
             return false;
@@ -1160,14 +1266,14 @@ final class Database
             " LIMIT -1 OFFSET ?",
             ");",
         );
-        query(sql, [room_name, max_room_tickers.text]);
+        query(sql, [Parameter(room_name), Parameter(max_room_tickers)]);
 
         const num_deleted = changes();
         if (num_deleted == 0)
             return false;
 
         if (log_db) writeln(
-            "[DB] Removed ", num_deleted.text, " excessive tickers from room ",
+            "[DB] Removed ", num_deleted, " excessive tickers from room ",
             blue, room_name, norm
         );
         return true;
@@ -1175,15 +1281,14 @@ final class Database
 
     RoomTicker[] room_tickers(string room_name)
     {
-        Appender!(RoomTicker[]) tickers;
         enum sql = text(
             "SELECT username, content FROM ", tickers_table,
             " WHERE room = ?"
         );
 
-        const res = query(sql, [room_name]);
-        foreach (ref record ; res) {
-            const username = record[0], content = record[1];
+        Appender!(RoomTicker[]) tickers;
+        foreach (ref record ; query(sql, [Parameter(room_name)])) {
+            const username = record[0].s, content = record[1].s;
             tickers ~= RoomTicker(room_name, username, content);
         }
         return tickers[];
@@ -1191,54 +1296,62 @@ final class Database
 
     RoomTicker[] user_tickers(RoomType type)(string username)
     {
-        Appender!(RoomTicker[]) tickers;
-        auto sql = text(
+        Appender!string sql;
+        Appender!(Parameter[]) parameters;
+
+        sql ~= text(
             "SELECT t.room, t.content FROM ", tickers_table, " t",
             " JOIN ", rooms_table, " r ON t.room = r.room",
             " WHERE t.username = ?"
         );
-        auto parameters = [username];
+        parameters ~= Parameter(username);
 
         if (type != RoomType.any) {
             sql ~= " AND r.type = ?";
-            parameters ~= [text(cast(int) type)];
+            parameters ~= Parameter(type);
         }
         sql ~= ";";
 
-        const res = query(sql, parameters);
-        foreach (ref record ; res) {
-            const room_name = record[0], content = record[1];
+        Appender!(RoomTicker[]) tickers;
+        foreach (ref record ; query(sql[], parameters[])) {
+            const room_name = record[0].s, content = record[1].s;
             tickers ~= RoomTicker(room_name, username, content);
         }
         return tickers[];
     }
 
-    ulong num_room_tickers(string room_name)
+    size_t num_room_tickers(string room_name)
     {
         enum sql = text(
             "SELECT COUNT(1) FROM ", tickers_table, " WHERE room = ?;"
         );
-        const res = query(sql, [room_name]);
-        return res.length > 0 ? res[0][0].to!ulong : 0;
+        return cast(size_t) query(sql, [Parameter(room_name)])[0][0].i;
     }
 
 
     // SQLite
 
     private void raise_sql_error(string query = null,
-                                 string[] parameters = null,
+                                 Parameter[] parameters = null,
                                  int res = 0)
     {
         const error_code = extended_error_code;
         const error_string = error_string(error_code);
 
-        if (query)
+        if (query !is null)
             writeln("DB: Query [", query, "]");
 
-        if (parameters)
-            writeln("DB: Parameters [", parameters.join(", "), "]");
+        if (parameters.length > 0) {
+            Appender!string output;
 
-        if (res)
+            output ~= "DB: Parameters [";
+            foreach (param ; parameters) output ~= param.print();
+            output ~= "]";
+
+            writeln(output[]);
+        }
+
+        if (res > 0)
             writeln("DB: Result code ", res, ".\n\n", error_msg, "\n");
 
         throw new DatabaseException(
@@ -1246,9 +1359,9 @@ final class Database
         );
     }
 
-    private string[][] query(string query, string[] parameters = null)
+    private Value[][] query(string query, Parameter[] parameters = null)
     {
-        Appender!(string[][]) ret;
+        Appender!(Value[][]) ret;
         sqlite3_stmt* stmt;
 
         int res = prepare(query, stmt);
@@ -1259,10 +1372,24 @@ final class Database
 
         foreach (i, ref parameter ; parameters) {
             const index = cast(int) i + 1;
-            if (parameter !is null)
-                res = bind_text(stmt, index, parameter);
-            else
+
+            final switch (parameter.type) {
+            case SQLITE_INTEGER:
+                res = bind_int64(stmt, index, parameter.i);
+                break;
+
+            case SQLITE_FLOAT:
+                res = bind_double(stmt, index, parameter.d);
+                break;
+
+            case SQLITE3_TEXT:
+                res = bind_text(stmt, index, parameter.s);
+                break;
+
+            case SQLITE_NULL:
                 res = bind_null(stmt, index);
+                break;
+            }
 
             if (res != SQLITE_OK) {
                 finalize(stmt);
@@ -1273,10 +1400,29 @@ final class Database
 
         res = step(stmt);
         while (res == SQLITE_ROW) {
-            Appender!(string[]) record;
-            foreach (i ; 0 .. column_count(stmt))
-                record ~= column_text(stmt, i);
+            Appender!(Value[]) record;
+            foreach (i ; 0 .. column_count(stmt)) {
+                Value value;
+                const type = column_type(stmt, i);
 
+                final switch (type) {
+                case SQLITE_INTEGER:
+                    value.i = column_int64(stmt, i);
+                    break;
+
+                case SQLITE_FLOAT:
+                    value.d = column_double(stmt, i);
+                    break;
+
+                case SQLITE3_TEXT:
+                    value.s = column_text(stmt, i);
+                    break;
+
+                case SQLITE_NULL:
+                    break;
+                }
+                record ~= value;
+            }
             ret ~= record[];
             res = step(stmt);
         }
@@ -1379,6 +1525,20 @@ final class Database
     }
 
     @trusted
+    private static int bind_int64(sqlite3_stmt* statement, int index,
+                                  long value)
+    {
+        return sqlite3_bind_int64(statement, index, value);
+    }
+
+    @trusted
+    private static int bind_double(sqlite3_stmt* statement, int index,
+                                  double value)
+    {
+        return sqlite3_bind_double(statement, index, value);
+    }
+
+    @trusted
     private static int bind_text(sqlite3_stmt* statement, int index,
                                  string value)
     {
@@ -1400,9 +1560,27 @@ final class Database
     }
 
     @trusted
+    private static long column_int64(sqlite3_stmt* statement, int index)
+    {
+        return sqlite3_column_int64(statement, index);
+    }
+
+    @trusted
+    private static double column_double(sqlite3_stmt* statement, int index)
+    {
+        return sqlite3_column_double(statement, index);
+    }
+
+    @trusted
     private static string column_text(sqlite3_stmt* statement, int index)
     {
         return sqlite3_column_text(statement, index).fromStringz.idup;
+    }
+
+    @trusted
+    private static int column_type(sqlite3_stmt* statement, int index)
+    {
+        return sqlite3_column_type(statement, index);
     }
 
     @trusted

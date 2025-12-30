@@ -81,7 +81,7 @@ void hash_password_async(string password, string salt, uint iterations,
 
 VerifyPasswordResult verify_password(string hash, string password)
 {
-    auto result = VerifyPasswordResult();
+    VerifyPasswordResult result;
     auto hash_parts = hash.splitter("$");
 
     if (hash_parts.empty || hash_parts.front.length != 0)

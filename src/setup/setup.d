@@ -206,7 +206,7 @@ final class Setup
             return;
         }
 
-        db.set_server_port(port);
+        db.set_server_port(port > 0 ? port : default_port);
         listening_port();
     }
 
