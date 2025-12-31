@@ -625,6 +625,18 @@ final class MessageHandler
             server.del_room(msg.room_name, permanent, user.username);
             break;
 
+        case PrivateRoomTransferOwnership:
+            scope msg = new UPrivateRoomTransferOwnership(
+                msg_buf, user.username
+            );
+            if (!msg.is_valid)
+                break;
+
+            server.transfer_room_ownership(
+                msg.room_name, user.username, msg.new_owner
+            );
+            break;
+
         case PrivateRoomToggle:
             scope msg = new UPrivateRoomToggle(msg_buf, user.username);
             if (!msg.is_valid)

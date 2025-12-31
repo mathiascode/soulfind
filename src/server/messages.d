@@ -139,6 +139,7 @@ enum PrivateRoomAddUser             = 134;
 enum PrivateRoomRemoveUser          = 135;
 enum PrivateRoomCancelMembership    = 136;
 enum PrivateRoomDisown              = 137;
+enum PrivateRoomTransferOwnership   = 138;
 enum PrivateRoomAdded               = 139;
 enum PrivateRoomRemoved             = 140;
 enum PrivateRoomToggle              = 141;
@@ -841,6 +842,20 @@ final class UPrivateRoomDisown : UMessage
         super(in_buf, in_username);
 
         room_name = read!string();
+    }
+}
+
+final class UPrivateRoomTransferOwnership : UMessage
+{
+    string room_name;
+    string new_owner;
+
+    this(const(ubyte)[] in_buf, string in_username) scope
+    {
+        super(in_buf, in_username);
+
+        room_name = read!string();
+        new_owner = read!string();
     }
 }
 
@@ -1560,13 +1575,14 @@ final class SAckNotifyPrivileges : SMessage
 
 final class SPrivateRoomUsers : SMessage
 {
-    this(string room_name, string[] usernames) scope
+    this(string room_name, string[] usernames, string owner) scope
     {
         super(PrivateRoomUsers);
 
         write!string(room_name);
         write!uint(cast(uint) usernames.length);
         foreach (ref username ; usernames) write!string(username);
+        write!string(owner);
     }
 }
 
@@ -1589,6 +1605,18 @@ final class SPrivateRoomRemoveUser : SMessage
 
         write!string(room_name);
         write!string(username);
+    }
+}
+
+final class SPrivateRoomTransferOwnership : SMessage
+{
+    this(string room_name, string previous_owner, string new_owner) scope
+    {
+        super(PrivateRoomTransferOwnership);
+
+        write!string(room_name);
+        write!string(previous_owner);
+        write!string(new_owner);
     }
 }
 

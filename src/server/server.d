@@ -693,6 +693,59 @@ final class Server
         return true;
     }
 
+   void transfer_room_ownership(string room_name, string actor, string target)
+    {
+        if (actor == target)
+            return;
+
+        const send_rooms = !cancel_room_operatorship(room_name, actor, target);
+
+        if (!db.transfer_room_ownership(room_name, actor, target)) {
+            const target_type = db.get_room_member_type(room_name, target);
+            if (target_type == RoomMemberType.non_existent) {
+                send_pm(
+                    server_username, actor,
+                    text(
+                        "user ", target, " must first be a member of room ",
+                        room_name
+                    )
+                );
+            }
+            return;
+        }
+
+        void send_transfer_msg(string room_username) {
+            auto room_user = get_user(room_username);
+            if (room_user is null)
+                return;
+
+            scope transfer_msg = new SPrivateRoomTransferOwnership(
+                room_name, actor, target
+            );
+            room_user.send_message(transfer_msg);
+        }
+        const members = db.room_members!(RoomMemberType.any)(room_name);
+        foreach (ref room_username ; members) send_transfer_msg(room_username);
+        send_transfer_msg(target);
+
+        send_pm(
+            server_username, actor,
+            text(
+                "User ", target, " is now the owner of room ", room_name
+            )
+        );
+        send_pm(
+            server_username, target,
+            text(
+                "User ", actor, " transferred ownership of room ",
+                room_name, " to you"
+            )
+        );
+
+        grant_room_operatorship(room_name, target, actor);
+        if (send_rooms) send_room_list(target);
+    }
+
     auto joined_rooms()
     {
         return rooms.byValue;
@@ -741,7 +794,8 @@ final class Server
         void send_users_msg(string room_name) {
             scope users_msg = new SPrivateRoomUsers(
                 room_name,
-                db.room_members!(RoomMemberType.any)(room_name)
+                db.room_members!(RoomMemberType.any)(room_name),
+                db.get_room_owner(room_name)
             );
             user.send_message(users_msg);
         }

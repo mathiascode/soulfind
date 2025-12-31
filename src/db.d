@@ -1076,6 +1076,44 @@ final class Database
         return true;
     }
 
+    bool transfer_room_ownership(string room_name, string previous_owner,
+                                 string new_owner)
+    {
+        enum owner_sql = text(
+            "UPDATE ", rooms_table, " SET owner = ?",
+            " WHERE room = ? AND type = ? AND owner = ? AND EXISTS(",
+            "  SELECT 1 FROM ", room_members_table,
+            "  WHERE room = ? AND username = ?",
+            " );"
+        );
+        enum member_sql = text(
+            "UPDATE ", room_members_table, " SET username = ?",
+            " WHERE room = ? AND username = ?;"
+        );
+
+        query("BEGIN IMMEDIATE;");
+        query(
+            owner_sql, [
+                new_owner, room_name, text(cast(uint) RoomType._private),
+                previous_owner, room_name, new_owner
+            ]
+        );
+        query(member_sql, [previous_owner, room_name, new_owner]);
+        query("COMMIT;");
+
+        if (changes() == 0) {
+            query("ROLLBACK;");
+            return false;
+        }
+
+        if (log_db) writeln(
+            "[DB] Transferred ownership of room ", blue, room_name, norm,
+            " from user ", blue, previous_owner, norm, " to ",
+            blue, new_owner, norm
+        );
+        return true;
+    }
+
     bool can_access_room(string room_name, string username)
     {
         enum sql = text(
