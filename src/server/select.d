@@ -329,7 +329,7 @@ final class PollSelector : Selector
             fd_idxs.remove(fd);
 
             pollfds[idx] = pollfds[$ - 1];
-            const swapped_fd = cast(socket_t) pollfds[idx].fd;
+            auto swapped_fd = cast(socket_t) pollfds[idx].fd;
             if (swapped_fd != fd) fd_idxs[swapped_fd] = idx;
 
             pollfds.length--;

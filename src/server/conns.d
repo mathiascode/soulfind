@@ -70,11 +70,10 @@ final class UserConnections
             import soulfind.main : running;
 
         while (running) {
-            const ready_fds = selector.select();
             const current_time = MonoTime.currTime;
 
             // Process ready sockets
-            foreach (ready_fd ; ready_fds) {
+            foreach (ready_fd ; selector.select()) {
                 const recv_ready = (ready_fd.events & SelectEvent.read) != 0;
                 const send_ready = (ready_fd.events & SelectEvent.write) != 0;
 
@@ -120,7 +119,7 @@ final class UserConnections
         if (conn.sock is null)
             return;
 
-        const sock_handle = conn.sock.handle;
+        auto sock_handle = conn.sock.handle;
         if (sock_handle in sock_users) {
             if (log_conn) writeln(
                 "[Conn] Closing connection to user ", red,
