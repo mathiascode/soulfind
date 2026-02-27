@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 name: Libraries
+if: ${{ !github.event.repository.fork }}
 on:
   push:
-    branches: ['master']
-    paths: ['lib/*.def']
   workflow_dispatch:
 
 permissions: {}

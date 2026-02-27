@@ -137,7 +137,7 @@ jobs:
 
   release:
     needs: build
-    if: github.repository == 'soulfind-dev/soulfind' && github.ref == 'refs/heads/master'
+    if: github.ref_name == 'master' && !github.event.repository.fork
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
