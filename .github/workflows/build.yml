@@ -39,11 +39,17 @@ jobs:
             config: static
 
           - os: macos-x86_64
-            image: macos-latest
-            target: -ax86_64-apple-macos10.12
+            image: macos-14
 
           - os: macos-arm64
             image: macos-latest
+
+          - os: macos-x86_64
+            compiler: ldc
+            target: -ax86_64-apple-macos10.12
+
+          - os: macos-arm64
+            compiler: ldc
             target: -aarm64-apple-macos11
 
           - os: windows-x86_64
@@ -54,9 +60,6 @@ jobs:
 
         exclude:
           - os: linux-arm64
-            compiler: dmd
-
-          - os: macos-x86_64
             compiler: dmd
 
           - os: macos-x86_64
