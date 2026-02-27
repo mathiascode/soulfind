@@ -145,10 +145,9 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
-          path: dist/
           skip-decompress: true
 
       - name: Create release
         run: |
           gh release delete "$TAG_NAME" --cleanup-tag || true
-          gh release create "$TAG_NAME" --title "$TAG_NAME" dist/**/*.zip
+          gh release create "$TAG_NAME" --title "$TAG_NAME" **/*.zip
