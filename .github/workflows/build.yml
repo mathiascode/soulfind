@@ -146,17 +146,9 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: dist/
-
-      - name: Zip artifacts
-        run: |
-          cd dist/
-          for dir in *; do
-            [ -f "$dir/soulfind" ] && chmod +x "$dir/soulfind"
-            [ -f "$dir/soulsetup" ] && chmod +x "$dir/soulsetup"
-            (cd "$dir" && zip -r "../$dir.zip" .)
-          done
+          skip-decompress: true
 
       - name: Create release
         run: |
           gh release delete "$TAG_NAME" --cleanup-tag || true
-          gh release create "$TAG_NAME" --title "$TAG_NAME" dist/*.zip
+          gh release create "$TAG_NAME" --title "$TAG_NAME" dist/**/*.zip
