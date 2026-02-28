@@ -1078,7 +1078,8 @@ class SMessage
     }
 
     private void write(T)(T value) scope
-        if (is(T : int) || is(T : uint) || is(T : bool) || is(T : string))
+        if (is(T : int) || is(T : uint) || is(T : bool) || is(T : char)
+            || is(T : string))
     {
         static if (is(T == string)) {
             write!uint(cast(uint) value.length);
@@ -1893,11 +1894,11 @@ final class SCantCreateRoom : SMessage
 
 final class SDistribSearch : SMessage
 {
-    this(uint unknown, string username, uint token, string query) scope
+    this(string username, uint token, string query) scope
     {
         super(DistribSearch);
 
-        write!uint(unknown);
+        write!uint('1');  // Identifier
         write!string(username);
         write!uint(token);
         write!string(query);
