@@ -249,11 +249,6 @@ final class MessageHandler
             if (!msg.is_valid)
                 break;
 
-            scope search_msg = new SEmbeddedMessage(new SDistribSearch(
-                "user", 1, "userq"
-            ));
-            user.send_message(search_msg);
-
             if (msg.status != UserStatus.offline)
                 user.update_status(msg.status);
             break;

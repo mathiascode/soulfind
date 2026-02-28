@@ -1078,8 +1078,7 @@ class SMessage
     }
 
     private void write(T)(T value) scope
-        if (is(T : int) || is(T : uint) || is(T : bool) || is(T : char)
-            || is(T : string))
+        if (is(T : int) || is(T : uint) || is(T : bool) || is(T : string))
     {
         static if (is(T == string)) {
             write!uint(cast(uint) value.length);
