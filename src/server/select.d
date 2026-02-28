@@ -279,10 +279,8 @@ version (kqueue) final class KqueueSelector : Selector
 final class PollSelector : Selector
 {
     version (Windows) {
-        import core.sys.windows.winsock2 : poll = WSAPoll, POLLERR,
-                                           pollfd = WSAPOLLFD, POLLHUP,
-                                           POLLIN = POLLRDNORM,
-                                           POLLOUT = POLLWRNORM;
+        import core.sys.windows.winsock2 : poll = WSAPoll, POLLERR, pollfd,
+                                           POLLHUP, POLLIN, POLLOUT;
     }
     else version (Posix) {
         import core.sys.posix.poll;
