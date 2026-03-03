@@ -92,12 +92,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up D (Linux)
-        if: runner.os == 'Linux'
-        run: apk add ${{ matrix.package }} dub gcc musl-dev sqlite-static
-
       - name: Set up D (Other)
-        if: runner.os != 'Linux'
         uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{ matrix.compiler }}

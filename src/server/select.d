@@ -11,8 +11,10 @@ import std.socket : socket_t;
 version (linux)         version = epoll;
 version (OSX)           version = kqueue;
 version (FreeBSD)       version = kqueue;
+version (OpenBSD)       version = kqueue;
 version (NetBSD)        version = kqueue;
 version (DragonFlyBSD)  version = kqueue;
+version (Haiku)         version = kqueue;
 
 
 enum SelectEvent
@@ -160,12 +162,70 @@ version (epoll) final class EpollSelector : Selector
 
 version (kqueue) final class KqueueSelector : Selector
 {
+    import core.stdc.stdint : intptr_t, uintptr_t;
+    import core.sys.posix.time : time_t, timespec;
+    import core.sys.posix.unistd : close;
+
     version      (OSX)           import core.sys.darwin.sys.event;
     else version (FreeBSD)       import core.sys.freebsd.sys.event;
     else version (NetBSD)        import core.sys.netbsd.sys.event;
-    else version (DragonFlyBSD)  import core.sys.dragonflybsd.sys.event;
-    import core.sys.posix.time : time_t, timespec;
-    import core.sys.posix.unistd : close;
+    else {
+        extern (C) {
+
+        enum
+        {
+            EVFILT_READ   =  -1,
+            EVFILT_WRITE  =  -2
+        }
+
+        version (OpenBSD) {
+            struct kevent_t
+            {
+                uintptr_t  ident;
+                short      filter;
+                ushort     flags;
+                uint       fflags;
+                long       data;
+                void*      udata;
+            }
+        }
+        else version (Haiku) {
+            struct kevent_t
+            {
+                uintptr_t  ident;
+                short      filter;
+                ushort     flags;
+                uint       fflags;
+                long       data;
+                void*      udata;
+                ulong[4]   ext;
+            }
+        }
+        else {
+            struct kevent_t
+            {
+                uintptr_t  ident;
+                short      filter;
+                ushort     flags;
+                uint       fflags;
+                intptr_t   data;
+                void*      udata;
+            }
+        }
+
+        enum
+        {
+            EV_ADD     = 0x0001,
+            EV_DELETE  = 0x0002
+        }
+
+        int kqueue();
+        int kevent(
+            int kq, const kevent_t *changelist, int nchanges,
+            kevent_t *eventlist, int nevents, const timespec *timeout
+        );
+        }
+    }
 
     private const int   kqueue_fd;
     private kevent_t[]  kevents;
