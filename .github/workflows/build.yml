@@ -10,7 +10,8 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        os: [linux-x86_64, linux-arm64, macos-x86_64, macos-arm64, windows-x86_64, windows-arm64]
+        os: [linux-x86_64, linux-arm64, freebsd-x86_64, macos-x86_64, macos-arm64,
+             windows-x86_64, windows-arm64]
         compiler: [ldc, dmd, gdc]
         include:
           - compiler: ldc
@@ -33,6 +34,9 @@ jobs:
             image: ubuntu-24.04-arm
             container: alpine:edge
 
+          - os: freebsd-x86_64
+            image: ubuntu-latest
+
           - os: macos-x86_64
             image: macos-latest
             target: -ax86_64-apple-macos10.12
@@ -50,6 +54,12 @@ jobs:
         exclude:
           - os: linux-arm64
             compiler: dmd
+
+          - os: freebsd-x86_64
+            compiler: dmd
+
+          - os: freebsd-x86_64
+            compiler: gdc
 
           - os: macos-x86_64
             compiler: dmd
@@ -90,28 +100,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up D (Linux)
-        if: runner.os == 'Linux'
+      - name: Set up D (Alpine Linux)
+        if: matrix.container == 'alpine:edge'
         run: apk add ${{ matrix.package }} dub gcc musl-dev sqlite-static
 
-      - name: Set up D (Other)
-        if: runner.os != 'Linux'
+      - name: Set up D (macOS & Windows)
+        if: runner.os == 'macOS' || runner.os == 'Windows'
         uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{ matrix.compiler }}
+
+      - name: Build (FreeBSD)
+        if: matrix.os == 'freebsd-x86_64'
+        uses: vmactions/freebsd-vm@v1
+        with:
+          run: |
+            sudo pkg install -y ${{ matrix.package }} dub sqlite3
+            dub build -v --build=release-debug --config=release
+            dub test
 
       - name: Build (Windows arm64)
         if: matrix.os == 'windows-arm64'
         run: |
           $vsPath = vswhere -property installationPath
-          cmd /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" -arch=arm64 -host_arch=x64 && dub build -v --build=release-debug --config=release --arch=aarch64-windows-msvc"
+          cmd /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" -arch=arm64 -host_arch=x64 && dub build -v --build=release-debug --config=release --arch=aarch64-windows-msvc" && dub test
 
       - name: Build (Other)
-        if: matrix.os != 'windows-arm64'
-        run: dub build -v --build=release-debug --config=release ${{ matrix.target }}
-
-      - name: Run tests
-        run: dub test ${{ matrix.target }}
+        if: matrix.os != 'freebsd-x86_64' && matrix.os != 'windows-arm64'
+        run: |
+          dub build -v --build=release-debug --config=release ${{ matrix.target }}
+          dub test ${{ matrix.target }}
 
       - name: Sign binaries (macOS)
         if: runner.os == 'macOS'
