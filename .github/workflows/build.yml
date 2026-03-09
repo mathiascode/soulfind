@@ -13,8 +13,6 @@ jobs:
         os: [linux-x86_64, linux-arm64, macos-x86_64, macos-arm64, windows-x86_64, windows-arm64]
         compiler: [ldc, dmd, gdc]
         include:
-          - config: default
-
           - compiler: ldc
             package: ldc
 
@@ -27,16 +25,13 @@ jobs:
           - os: linux-x86_64
             image: ubuntu-latest
             container: alpine:edge
-            config: static
 
           - os: linux-x86_64
             compiler: dmd
-            config: default
 
           - os: linux-arm64
             image: ubuntu-24.04-arm
             container: alpine:edge
-            config: static
 
           - os: macos-x86_64
             image: macos-latest
@@ -109,11 +104,11 @@ jobs:
         if: matrix.os == 'windows-arm64'
         run: |
           $vsPath = vswhere -property installationPath
-          cmd /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" -arch=arm64 -host_arch=x64 && dub build -v --build=release-debug --arch=aarch64-windows-msvc"
+          cmd /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" -arch=arm64 -host_arch=x64 && dub build -v --build=release-debug --config=release --arch=aarch64-windows-msvc"
 
       - name: Build (Other)
         if: matrix.os != 'windows-arm64'
-        run: dub build -v --build=release-debug --config=${{ matrix.config }} ${{ matrix.target }}
+        run: dub build -v --build=release-debug --config=release ${{ matrix.target }}
 
       - name: Run tests
         run: dub test ${{ matrix.target }}
