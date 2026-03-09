@@ -35,11 +35,11 @@ To compile Soulfind, run:
 dub build
 ```
 
-To compile a static binary on supported systems (mainly musl-based Linux
-distributions), run:
+To compile a release binary with optimal adjustments on supported platforms
+(Link Time Optimization, statically compiled), run:
 
 ```sh
-dub build --config=static
+dub build --config=release
 ```
 
 Once compiled, binaries are available in the `bin/` folder.
