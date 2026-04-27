@@ -37,6 +37,20 @@
             }
         },
         {
+            "name": "analysis",
+            "targetType": "none",
+            "dependencies": {
+                "soulfind:server": {
+                    "version": "*",
+                    "dflags-gdc": ["-fanalyzer", "-fanalyzer-call-summaries"]
+                },
+                "soulfind:setup": {
+                    "version": "*",
+                    "dflags-gdc": ["-fanalyzer", "-fanalyzer-call-summaries"]
+                }
+            }
+        },
+        {
             "name": "unittest",
             "targetPath": "bin",
             "libs-posix": ["sqlite3"],

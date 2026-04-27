@@ -18,3 +18,17 @@ jobs:
 
       - name: Lint code
         run: dub lint
+
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: alpine:edge
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up D
+        run: apk add dub gcc gcc-gdc musl-dev sqlite
+
+      - name: Lint code
+        run: dub build --config=analysis
