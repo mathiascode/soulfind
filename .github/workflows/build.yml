@@ -38,6 +38,9 @@ jobs:
             image: macos-latest
             target: -ax86_64-apple-macos10.12
 
+          - os: macos-x86_64
+            compiler: dmd-master
+
           - os: macos-arm64
             image: macos-latest
             target: -aarm64-apple-macos11
