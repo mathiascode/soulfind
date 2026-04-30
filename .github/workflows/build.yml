@@ -10,8 +10,8 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        os: [linux-x86_64, linux-arm64, freebsd-x86_64, openbsd-x86_64, macos-x86_64, macos-arm64,
-             windows-x86_64, windows-arm64]
+        os: [linux-x86_64, linux-arm64, freebsd-x86_64, openbsd-x86_64, illumos-x86_64,
+             macos-x86_64, macos-arm64, windows-x86_64, windows-arm64]
         compiler: [ldc, dmd, gdc]
         include:
           - compiler: ldc
@@ -35,6 +35,9 @@ jobs:
             image: ubuntu-latest
 
           - os: openbsd-x86_64
+            image: ubuntu-latest
+
+          - os: illumos-x86_64
             image: ubuntu-latest
 
           - os: macos-x86_64
@@ -68,6 +71,12 @@ jobs:
             compiler: ldc
 
           - os: openbsd-x86_64
+            compiler: gdc
+
+          - os: illumos-x86_64
+            compiler: ldc
+
+          - os: illumos-x86_64
             compiler: gdc
 
           - os: macos-x86_64
@@ -138,6 +147,22 @@ jobs:
           version: '7.7'
           run: |
             sudo pkg_add ${{ matrix.package }} dub sqlite3
+            dub build -v --build=release-debug --config=release
+            dub test
+
+      - name: Build (illumos)
+        if: startsWith(matrix.os, 'illumos')
+        uses: cross-platform-actions/action@v1.0.0
+        with:
+          operating_system: omnios
+          version: 'r151056'
+          run: |
+            wget https://github.com/ibara/dmd/releases/download/openindiana-2.109.0/dmd.p5p
+            sudo pkg install -g dmd.p5p dmd
+            git clone https://github.com/dlang/dub
+            cd dub
+            dmd build.d
+            cd ..
             dub build -v --build=release-debug --config=release
             dub test
 
