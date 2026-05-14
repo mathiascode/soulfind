@@ -41,13 +41,14 @@ jobs:
           path: soulfind-image-${{ matrix.arch }}.tar
 
   publish:
-    if: github.repository == 'soulfind-dev/soulfind' && github.ref == 'refs/heads/master'
+    if: github.repository == 'mathiascode/soulfind' && github.ref == 'refs/heads/master'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       id-token: write
       attestations: write
+      artifact-metadata: write
       packages: write
     steps:
       - name: Download artifacts
@@ -75,24 +76,21 @@ jobs:
 
       - name: Load image digests
         run: |
-          echo "IMAGE_AMD64_SHA=$(
+          IMAGE_AMD64_SHA=$(
             docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_NAME:latest-amd64" |
-            cut -d'@' -f2
-          )" >> "$GITHUB_ENV"
-
-          echo "IMAGE_ARM64_SHA=$(
+            cut -d'@' -f2 | cut -d: -f2
+          )
+          IMAGE_ARM64_SHA=$(
             docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_NAME:latest-arm64" |
-            cut -d'@' -f2
-          )" >> "$GITHUB_ENV"
+            cut -d'@' -f2 | cut -d: -f2
+          )
+          cat > digests.txt <<EOF
+          $IMAGE_AMD64_SHA  $IMAGE_NAME:latest-amd64
+          $IMAGE_ARM64_SHA  $IMAGE_NAME:latest-arm64
+          EOF
 
-      - name: Attest amd64 image
+      - name: Attest
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ env.IMAGE_AMD64_SHA }}
-
-      - name: Attest arm64 image
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
-        with:
-          subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ env.IMAGE_ARM64_SHA }}
+          subject-checksums: digests.txt
+          push-to-registry: true
