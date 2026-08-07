@@ -118,6 +118,7 @@ jobs:
         with:
           operating_system: ${{ matrix.vm_os }}
           version: ${{ matrix.vm_version }}
+          environment_variables: SOURCE_DATE_EPOCH
 
       - name: Set up D (Linux)
         if: matrix.container == 'alpine:edge'
@@ -139,9 +140,16 @@ jobs:
         with:
           compiler: ${{ matrix.compiler }}
 
+      - name: Set reproducible timestamp
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        shell: sh
+        run: |
+          COMMIT_DATE=$(date -d "${{ github.event.head_commit.timestamp }}" +%s)
+          echo "SOURCE_DATE_EPOCH=$COMMIT_DATE" >> $GITHUB_ENV
+
       - name: Build (BSD)
         if: startsWith(matrix.os, 'freebsd') || startsWith(matrix.os, 'openbsd')
-        shell: cpa.sh {0}
+        shell: cpa.sh {0} --environment-variables SOURCE_DATE_EPOCH
         run: |
           dub build -v --build=release-debug --config=release
           dub test
