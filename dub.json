@@ -23,6 +23,8 @@
                     "dflags-linux": ["-L--no-export-dynamic"],
                     "dflags-linux-gdc": ["-static"],
                     "dflags-linux-ldc": ["-static"],
+                    "dflags-freebsd": ["-L--no-export-dynamic"],
+                    "dflags-openbsd": ["-L--no-export-dynamic"],
                     "dflags-gdc": ["-flto"],
                     "dflags-ldc": ["-flto=thin"]
                 },
@@ -31,6 +33,8 @@
                     "dflags-linux": ["-L--no-export-dynamic"],
                     "dflags-linux-gdc": ["-static"],
                     "dflags-linux-ldc": ["-static"],
+                    "dflags-freebsd": ["-L--no-export-dynamic"],
+                    "dflags-openbsd": ["-L--no-export-dynamic"],
                     "dflags-gdc": ["-flto"],
                     "dflags-ldc": ["-flto=thin"]
                 }
