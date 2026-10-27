@@ -22,6 +22,7 @@ jobs:
 
           - compiler: gdc
             package: gcc-gdc
+            package2: gdc
 
           - os: linux-x86_64
             image: ubuntu-latest
@@ -67,9 +68,6 @@ jobs:
 
           - os: openbsd-x86_64
             compiler: ldc
-
-          - os: openbsd-x86_64
-            compiler: gdc
 
           - os: macos-x86_64
             compiler: gdc
@@ -130,7 +128,7 @@ jobs:
       - name: Set up D (OpenBSD)
         if: startsWith(matrix.os, 'openbsd')
         shell: cpa.sh {0}
-        run: sudo pkg_add ${{ matrix.package }} dub sqlite3
+        run: sudo pkg_add ${{ matrix.package2 }} dub sqlite3
 
       - name: Set up D (macOS & Windows)
         if: runner.os == 'macOS' || runner.os == 'Windows'
