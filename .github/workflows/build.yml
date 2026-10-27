@@ -16,16 +16,16 @@ jobs:
         include:
           - compiler: ldc
             package: ldc
-            dc: ldc2
+            dcbsd: ldc2
 
           - compiler: dmd
             package: dmd
-            dc: dmd
+            dcbsd: dmd
 
           - compiler: gdc
             package: gcc-gdc
             package2: gdc
-            dc: gdc
+            dcbsd: egdc
 
           - os: linux-x86_64
             image: ubuntu-latest
@@ -143,7 +143,7 @@ jobs:
         if: startsWith(matrix.os, 'freebsd') || startsWith(matrix.os, 'openbsd')
         shell: cpa.sh {0}
         run: |
-          dub build -v --build=release-debug --config=release --compiler=${{ matrix.dc }}
+          dub build -v --build=release-debug --config=release --compiler=${{ matrix.dcbsd }}
           dub test
 
       - name: Build (Windows arm64)
@@ -155,7 +155,7 @@ jobs:
       - name: Build (Other)
         if: startsWith(matrix.os, 'linux') || startsWith(matrix.os, 'macos') || matrix.os == 'windows-x86_64'
         run: |
-          dub build -v --build=release-debug --config=release --compiler=${{ matrix.dc }}
+          dub build -v --build=release-debug --config=release
           dub test
 
       - name: Sign binaries (macOS)
