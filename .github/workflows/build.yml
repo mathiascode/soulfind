@@ -140,7 +140,7 @@ jobs:
         if: startsWith(matrix.os, 'freebsd') || startsWith(matrix.os, 'openbsd')
         shell: cpa.sh {0}
         run: |
-          dub build -v --build=release-debug --config=release
+          dub build -v --build=release-debug --config=release --compiler=${{ matrix.compiler }}
           dub test
 
       - name: Build (Windows arm64)
@@ -152,7 +152,7 @@ jobs:
       - name: Build (Other)
         if: startsWith(matrix.os, 'linux') || startsWith(matrix.os, 'macos') || matrix.os == 'windows-x86_64'
         run: |
-          dub build -v --build=release-debug --config=release
+          dub build -v --build=release-debug --config=release --compiler=${{ matrix.compiler }}
           dub test
 
       - name: Sign binaries (macOS)
