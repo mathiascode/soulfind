@@ -20,7 +20,7 @@
             "dependencies": {
                 "soulfind:server": {
                     "version": "*",
-                    "dflags-linux": ["-L--no-export-dynamic"],
+                    "dflags-posix": ["-L--no-export-dynamic"],
                     "dflags-linux-gdc": ["-static"],
                     "dflags-linux-ldc": ["-static"],
                     "dflags-gdc": ["-flto"],
@@ -28,7 +28,7 @@
                 },
                 "soulfind:setup": {
                     "version": "*",
-                    "dflags-linux": ["-L--no-export-dynamic"],
+                    "dflags-posix": ["-L--no-export-dynamic"],
                     "dflags-linux-gdc": ["-static"],
                     "dflags-linux-ldc": ["-static"],
                     "dflags-gdc": ["-flto"],
