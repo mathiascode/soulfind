@@ -10,8 +10,8 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        os: [linux-x86_64, linux-arm64, freebsd-x86_64, openbsd-x86_64, macos-x86_64, macos-arm64,
-             windows-x86_64, windows-arm64]
+        os: [linux-x86_64, linux-arm64, freebsd-x86_64, openbsd-x86_64, openbsd-arm64, macos-x86_64,
+             macos-arm64, windows-x86_64, windows-arm64]
         compiler: [ldc, dmd, gdc]
         include:
           - compiler: ldc
@@ -38,6 +38,13 @@ jobs:
 
           - os: openbsd-x86_64
             image: ubuntu-latest
+            arch: x86-64
+            vm_os: openbsd
+            vm_version: '8.0'
+
+          - os: openbsd-arm64
+            image: ubuntu-latest
+            arch: arm64
             vm_os: openbsd
             vm_version: '8.0'
 
@@ -117,6 +124,7 @@ jobs:
         with:
           operating_system: ${{ matrix.vm_os }}
           version: ${{ matrix.vm_version }}
+          architecture: ${{ matrix.arch }}
 
       - name: Set up D (Linux)
         if: matrix.container == 'alpine:edge'
