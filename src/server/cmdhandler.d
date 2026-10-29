@@ -642,16 +642,16 @@ final class CommandHandler
         enum j_quot = "\", \"";
 
         auto user = server.get_user(username);
-        auto client_version = user.client_version.toString;
+        const client_version = user.client_version.toString;
         const status = (user.status == UserStatus.away) ? "away" : "online";
 
         const admin_until = server.db.admin_until(username);
-        auto admin = (admin_until > SysTime())
+        const admin = (admin_until > SysTime())
             ? text(quot, admin_until.toISOExtString, quot)
             : "null";
 
         const privileged_until = user.privileged_until;
-        auto privileged = (privileged_until > SysTime())
+        const privileged = (privileged_until > SysTime())
             ? text(quot, privileged_until.toISOExtString, quot)
             : "null";
 

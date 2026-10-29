@@ -832,7 +832,7 @@ final class Database
             " WHERE username = ?;"
         );
         const res = query(sql, [username]);
-        auto user_stats = UserStats();
+        UserStats user_stats;
 
         if (res.length > 0) {
             const record                   = res[0];
