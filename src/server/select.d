@@ -11,6 +11,7 @@ import std.socket : socket_t;
 version (linux)         version = epoll;
 version (OSX)           version = kqueue;
 version (FreeBSD)       version = kqueue;
+version (OpenBSD)       version = kqueue;
 version (NetBSD)        version = kqueue;
 version (DragonFlyBSD)  version = kqueue;
 
@@ -162,6 +163,7 @@ version (kqueue) final class KqueueSelector : Selector
 {
     version      (OSX)           import core.sys.darwin.sys.event;
     else version (FreeBSD)       import core.sys.freebsd.sys.event;
+    else version (OpenBSD)       import core.sys.openbsd.sys.event;
     else version (NetBSD)        import core.sys.netbsd.sys.event;
     else version (DragonFlyBSD)  import core.sys.dragonflybsd.sys.event;
     import core.sys.posix.time : time_t, timespec;
